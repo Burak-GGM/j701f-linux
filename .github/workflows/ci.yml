@@ -26,3 +26,24 @@ jobs:
           python-version: "3.12"
       - run: pip install -r wiki/requirements.txt
       - run: mkdocs build --strict
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/wiki-site
+
+  # The wiki is published to GitHub Pages from main only, after the tests pass.
+  pages:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tests, wiki]
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

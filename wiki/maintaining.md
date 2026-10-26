@@ -38,6 +38,8 @@ When two people or assistants work on the project at the same time, they share t
 
 The project is published on GitHub under GPL-2.0-only (since 2026-10-26). Before anything is pushed, check that it carries no firmware, no partition backups, no passwords or keys and no home-network details: those stay in ignored paths (`build/`, `original/`, `tools/downloads/`, `docs/coordination/`, `.phone-ip`). IP addresses in the notes use `192.168.1.0/24`.
 
+Every push to `main` runs the unit tests and `mkdocs build --strict` on GitHub; when both pass, the built wiki is published to <https://burak-ggm.github.io/j701f-linux/> (`.github/workflows/ci.yml`). A page that fails the strict build therefore never reaches the public site.
+
 ## Building the wiki
 
 ```sh

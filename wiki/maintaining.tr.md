@@ -38,6 +38,8 @@ Komutlar, dosya adları, yazmaç adları ve çekirdek terimleri iki dilde de old
 
 Proje 2026-10-26'dan beri GitHub'da GPL-2.0-only lisansıyla yayımlanır. Bir şey gönderilmeden önce firmware, bölüm yedeği, parola ya da anahtar ve ev ağı ayrıntısı içermediği denetlenir: bunlar git'in yok saydığı yollarda kalır (`build/`, `original/`, `tools/downloads/`, `docs/coordination/`, `.phone-ip`). Notlardaki IP adresleri `192.168.1.0/24` aralığını kullanır.
 
+`main` dalına yapılan her gönderimde GitHub birim testlerini ve `mkdocs build --strict` derlemesini çalıştırır; ikisi de geçerse derlenen wiki <https://burak-ggm.github.io/j701f-linux/> adresinde yayımlanır (`.github/workflows/ci.yml`). Böylece katı derlemeden geçmeyen bir sayfa herkese açık siteye hiç ulaşmaz.
+
 ## Wikiyi derlemek
 
 ```sh

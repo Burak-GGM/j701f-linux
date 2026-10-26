@@ -5,7 +5,7 @@ Samsung SM-J701F (`j7velte`, Exynos 7870), a 2017 Android phone. The phone boots
 kernel from the BOOT partition, keeps its root filesystem on the DATA partition, and has
 a graphical recovery of this project's own in the RECOVERY partition.
 
-[Wiki (English / Türkçe)](wiki/index.md) · [Hardware status](wiki/reference/hardware.md) ·
+[Wiki (English / Türkçe)](https://burak-ggm.github.io/j701f-linux/) · [Hardware status](wiki/reference/hardware.md) ·
 [Kernel and patches](wiki/reference/kernel.md) · [Tools and workflow](wiki/reference/tools.md) ·
 [Lessons and pitfalls](wiki/reference/lessons.md)
 
@@ -79,7 +79,7 @@ python3 -m unittest discover -s tests
 Tests that need build products, a prepared kernel tree or a connected phone skip
 themselves when those are missing.
 
-Wiki:
+Wiki (published at <https://burak-ggm.github.io/j701f-linux/> from `main` after the tests pass):
 
 ```sh
 python3 -m venv build/wiki-venv

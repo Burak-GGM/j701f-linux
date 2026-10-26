@@ -1663,5 +1663,6 @@ Owner: "clean up, make the project professional, and share it on GitHub once you
 - In a fresh clone (no `build/`, `extracted/` or user-supplied images) seven tests failed on missing files; `test_sboot_stub`, `test_recovery` and four tests in `test_diagnostics` now skip themselves when those inputs are absent. Fresh clone: 259 tests, 82 skipped, all others pass, also under Python 3.12. `.github/workflows/ci.yml` runs the tests and a strict wiki build on every push.
 - The first CI run failed two real-terminal tests: on Ubuntu `/bin/sh` is dash, which takes the carriage return that wakes getty as part of the command (reproduced in an `ubuntu:24.04` container). They now run under bash, which edits lines like the phone's BusyBox ash; the second run passed.
 - Repository: https://github.com/Burak-GGM/j701f-linux (public). Commits use the account's GitHub no-reply address.
+- Owner: publish the wiki on GitHub Pages, deployed from CI. The `checks` workflow now uploads the strict wiki build and a `pages` job publishes it from `main` once the tests and the wiki build pass; Pages is set to the workflow source. Site: https://burak-ggm.github.io/j701f-linux/ (`site_url` set in `mkdocs.yml`).
 
 <!-- CLAUDE-END 2026-10-09 -->

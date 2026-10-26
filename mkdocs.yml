@@ -2,6 +2,7 @@
 # Turkish: page.tr.md). Build: see wiki/maintaining.md.
 site_name: Linux on the Samsung Galaxy J7 Neo (SM-J701F)
 site_description: How a 2017 Exynos 7870 phone went from a repacked recovery image to mainline Linux with Plasma Mobile
+site_url: https://burak-ggm.github.io/j701f-linux/
 repo_url: https://github.com/Burak-GGM/j701f-linux
 repo_name: Burak-GGM/j701f-linux
 docs_dir: wiki
