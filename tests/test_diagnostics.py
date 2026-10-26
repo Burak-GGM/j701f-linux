@@ -17,6 +17,11 @@ console = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(console)
 
 
+# The phone's BusyBox ash edits lines, so a bare carriage return ends a command;
+# bash does the same, dash (Debian/Ubuntu /bin/sh) reads it as part of the command.
+LINE_EDITING_SHELL = shutil.which('bash') or '/bin/sh'
+
+
 class DiagnosticsTests(unittest.TestCase):
     def test_disconnect_keeps_partial_serial_output(self):
         with mock.patch.object(console.select, 'select', return_value=([17], [], [])), \
@@ -28,7 +33,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_diagnostic_script_runs_over_real_pty(self):
         master, slave = pty.openpty()
         console.serial_settings(master)
-        shell = subprocess.Popen(['/bin/sh','-i'], stdin=slave, stdout=slave, stderr=slave,
+        shell = subprocess.Popen([LINE_EDITING_SHELL,'-i'], stdin=slave, stdout=slave, stderr=slave,
                                  start_new_session=True)
         try:
             output = console.command_session(master, 'printf "REPORT COMPLETE\\n"\n', 'REPORT COMPLETE')
@@ -44,7 +49,7 @@ class DiagnosticsTests(unittest.TestCase):
             wrapper.chmod(0o755)
             master, slave = pty.openpty()
             console.serial_settings(master)
-            shell = subprocess.Popen(['/bin/sh','-i'], stdin=slave, stdout=slave, stderr=slave,
+            shell = subprocess.Popen([LINE_EDITING_SHELL,'-i'], stdin=slave, stdout=slave, stderr=slave,
                                      start_new_session=True)
             payload = b'#!/bin/sh\nprintf "Layout validation: simulated probe success\\n"\n'
             token = 'TEST_PROBE_TRANSFER'
