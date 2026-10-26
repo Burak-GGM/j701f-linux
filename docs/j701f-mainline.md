@@ -1661,6 +1661,7 @@ Owner: "clean up, make the project professional, and share it on GitHub once you
 - New `README.md` (status, layout, building, what is not in the repository, licence); the old one, which described stage 1, is `docs/stage1-recovery.md`. New `docs/README.md` sorts the notes into current and historical. `LICENSE` is the GPL-2.0 text.
 - `tests/test_dsim7870_porches.py` failed on the host's clang 23 (a new warning, "set but not used" global, on the mock's board variables in the unpatched build, turned into an error by `-Werror`); the test now switches that warning off. The whole suite passes again.
 - In a fresh clone (no `build/`, `extracted/` or user-supplied images) seven tests failed on missing files; `test_sboot_stub`, `test_recovery` and four tests in `test_diagnostics` now skip themselves when those inputs are absent. Fresh clone: 259 tests, 82 skipped, all others pass, also under Python 3.12. `.github/workflows/ci.yml` runs the tests and a strict wiki build on every push.
+- The first CI run failed two real-terminal tests: on Ubuntu `/bin/sh` is dash, which takes the carriage return that wakes getty as part of the command (reproduced in an `ubuntu:24.04` container). They now run under bash, which edits lines like the phone's BusyBox ash; the second run passed.
 - Repository: https://github.com/Burak-GGM/j701f-linux (public). Commits use the account's GitHub no-reply address.
 
 <!-- CLAUDE-END 2026-10-09 -->
