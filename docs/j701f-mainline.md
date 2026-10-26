@@ -1665,4 +1665,14 @@ Owner: "clean up, make the project professional, and share it on GitHub once you
 - Repository: https://github.com/Burak-GGM/j701f-linux (public). Commits use the account's GitHub no-reply address.
 - Owner: publish the wiki on GitHub Pages, deployed from CI. The `checks` workflow now uploads the strict wiki build and a `pages` job publishes it from `main` once the tests and the wiki build pass; Pages is set to the workflow source. Site: https://burak-ggm.github.io/j701f-linux/ (`site_url` set in `mkdocs.yml`).
 
+## Two fixes prepared for mainline, not sent (2026-10-26)
+
+Owner: prepare the `btbcm` and `s5p-mfc` patches in kernel form locally (checkpatch, get_maintainer, cover letter draft); send nothing.
+
+- Base: a shallow clone of mainline at `d135ab453a74` (7.4 merge window) in `build/upstream/linux`, branch `j701f-upstream`. Both bugs are still there; the files are identical in `bluetooth-next` and in `media-committers` `next`. Web searches found no earlier patch for either.
+- `btbcm`: the address list in mainline has grown (BCM4384B0) and has a comment per address; the patch adds `BDADDR_BCM43430A1_PATCHED` with its own comment line. Re-checked on the phone: the `brcm/BCM43430A1.hcd` it loads is byte-identical to linux-firmware's file ("BCM43438A1 37.4MHz Raspberry Pi 3-0141").
+- `s5p-mfc`: the J701F comment was replaced by a neutral one. The H.264-only check came with `f96f3cfa0bb8` ("[media] s5p-mfc: Update MFC v4l2 driver to support MFC6.x", 2012; confirmed through the GitHub API, the original 2011 driver had no such check): `Fixes:` tag and `Cc: stable`, as the media maintainer profile asks for fixes. `head_processed` is read in one place only (`s5p_mfc_handle_init_buffers`), and the block is on the decoder path only.
+- The kernel's rules for AI-assisted patches (`Documentation/process/coding-assistants.rst`): an AI agent must not add `Signed-off-by`. The patches therefore carry the owner as author but no sign-off; the commit messages state that the fix was found and written with Claude, and a `Notes:` section below `---` (instead of a cover letter, which a single patch does not take) says what was and was not tested.
+- Checks: `W=1` arm64 build of both files without warnings; `checkpatch.pl --strict` with the sign-off added: btbcm clean, s5p-mfc one warning ("Unknown commit id") caused by the shallow clone. Recipients and send commands are in `kernel/upstream/README.md`.
+
 <!-- CLAUDE-END 2026-10-09 -->

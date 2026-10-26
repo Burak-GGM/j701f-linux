@@ -26,7 +26,7 @@ Everything else the SoC needs — clock controllers, pin control, the S2MPU05 PM
 
 ## Local patches (`kernel/patches/linux-*.patch`)
 
-These exist only in this project. None has been sent upstream.
+These exist only in this project. None has been sent upstream. Two of them, the `btbcm` address and the video decoder's first frame, have been rewritten against current mainline and prepared for sending in `kernel/upstream/` (checked with `checkpatch.pl`, recipients from `get_maintainer.pl`); sending them is the owner's step, with his own `Signed-off-by`.
 
 | Patch | What it does | Why |
 | --- | --- | --- |

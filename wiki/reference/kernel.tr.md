@@ -26,7 +26,7 @@ Yonga setinin ihtiyaç duyduğu geri kalan her şey — saat denetleyicileri, pi
 
 ## Yerel yamalar (`kernel/patches/linux-*.patch`)
 
-Bunlar yalnızca bu projede var. Hiçbiri üst akıma gönderilmedi.
+Bunlar yalnızca bu projede var. Hiçbiri üst akıma gönderilmedi. İkisi, `btbcm` adresi ve video çözücünün ilk karesi, güncel mainline'a göre yeniden yazılıp `kernel/upstream/` altında gönderime hazırlandı (`checkpatch.pl` ile denetlendi, alıcılar `get_maintainer.pl` ile bulundu); göndermek, kendi `Signed-off-by` satırıyla sahibin adımıdır.
 
 | Yama | Ne yapar | Neden |
 | --- | --- | --- |
