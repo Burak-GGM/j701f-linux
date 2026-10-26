@@ -1,0 +1,5 @@
+#!/bin/sh
+# J701F_KOKO_WRAPPER: Kirigami's mobile layout crashes Koko 26.04.2 when an
+# image view opens on this phone. Keep the system's mobile layout unchanged.
+export QT_QUICK_CONTROLS_MOBILE=false
+exec /usr/bin/koko "$@"

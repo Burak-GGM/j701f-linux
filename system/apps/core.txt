@@ -1,0 +1,16 @@
+# Daily-use J701F applications. One Alpine package name per line.
+plasma-mobile
+plasma-camera
+angelfish
+dolphin
+koko
+qmlkonsole
+foot
+kalk
+kclock
+gnome-software
+gnome-software-plugin-apk2
+alpine-appstream-downloader
+mpv
+vlc
+vlc-qt

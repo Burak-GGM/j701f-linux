@@ -1,0 +1,14 @@
+# Only for on-device development and diagnostics.
+gcc
+g++
+musl-dev
+make
+pkgconf
+git
+neovim
+qt6-qtbase-dev
+qtermwidget-dev
+perf
+sysbench
+kmscube
+mesa-demos

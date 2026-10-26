@@ -74,6 +74,11 @@ python3 tools/prepare-boot-update.py --handoff-dir build/kernel/handoff-NAME \
 
 `tools/phone-update.sh` shows which Alpine packages have updates and changes nothing; with `--apply` it upgrades the ordinary ones and holds back the "sensitive" ones - the graphics stack and desktop (Mesa, KWin, Plasma, Qt, SDDM), sound and camera (PipeWire, libcamera), and what the phone needs to come up and be reachable (musl, BusyBox, OpenRC, udev, D-Bus, NetworkManager, OpenSSH, firmware) - until `--include-sensitive` is given, so that those are upgraded when somebody can look at the screen afterwards. Before changing anything it records the installed versions in `~/j701f/updates/` on the phone, and afterwards it runs the health check. There is no automatic way back: Alpine's stable repository does not keep old versions, so make a backup first when the sensitive ones are included.
 
+### Application profile
+
+`system/apps/setup.sh` runs **on the Alpine phone**. It previews the daily-use application packages by default; `--apply` installs them, `--prune` also removes the listed optional applications, and `--development` adds compilers and diagnostics. The owner's development tools remain installed. Applying requires the `samsung,j7velte` device-tree compatible string. The preview and repeat apply were exercised on the running phone on 2026-10-26 without additional package changes. The script does not build or flash BOOT/RECOVERY, migrate DATA, or configure Wi-Fi; a full public installer is still future work. See `system/apps/README.md` for usage.
+It also installs a Koko-only wrapper in `/usr/local/bin/koko` to avoid the image-opening crash with Kirigami's mobile layout.
+
 ### Backup
 
 `tools/phone-backup.sh` - see [Backup and rebuilding the phone](userspace.md#backup-and-rebuilding-the-phone).

@@ -74,6 +74,11 @@ python3 tools/prepare-boot-update.py --handoff-dir build/kernel/handoff-AD \
 
 `tools/phone-update.sh` hangi Alpine paketlerinin güncellemesi olduğunu gösterir ve hiçbir şeyi değiştirmez; `--apply` ile sıradan olanları yükseltir, "hassas" olanları - grafik yığını ve masaüstü (Mesa, KWin, Plasma, Qt, SDDM), ses ve kamera (PipeWire, libcamera), ve telefonun açılıp erişilebilir olması için gerekenler (musl, BusyBox, OpenRC, udev, D-Bus, NetworkManager, OpenSSH, aygıt yazılımları) - `--include-sensitive` verilene dek bekletir; böylece bunlar, sonrasında ekrana bakabilecek biri varken yükseltilir. Bir şeyi değiştirmeden önce kurulu sürümleri telefonda `~/j701f/updates/` altına kaydeder, sonrasında sağlık denetimini çalıştırır. Otomatik bir geri dönüş yoktur: Alpine'ın kararlı deposu eski sürümleri tutmaz; bu yüzden hassas paketler dahil edilecekse önce yedek alın.
 
+### Uygulama profili
+
+`system/apps/setup.sh` **Alpine çalışan telefonda** yürütülür. Varsayılan olarak günlük uygulama paketlerini yalnızca ön izler; `--apply` onları kurar, `--prune` ayrıca listelenen isteğe bağlı uygulamaları kaldırır, `--development` ise derleyici ve tanı araçlarını ekler. Sahibinin geliştirme araçları kurulu kalmıştır. Uygulama için aygıt ağacında `samsung,j7velte` uyumu gerekir. Ön izleme ve tekrar uygulama 2026-10-26'da çalışan telefonda denendi; ek paket değişikliği olmadı. Betik BOOT/RECOVERY derlemez ya da flashlamaz, DATA'yı taşımaz ve Wi-Fi'yi yapılandırmaz; herkese açık tam kurucu sonraki iştir. Kullanım için `system/apps/README.md` dosyasına bakın.
+Ayrıca mobil Kirigami düzeniyle resim açarken yaşanan çökmeyi önlemek için `/usr/local/bin/koko` konumuna yalnız Koko'yu etkileyen bir sarmalayıcı kurar.
+
 ### Yedek
 
 `tools/phone-backup.sh` - bkz. [Yedek ve telefonu yeniden kurma](userspace.md#yedek-ve-telefonu-yeniden-kurma).
