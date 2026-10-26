@@ -1,0 +1,28 @@
+{
+  "images": {
+    "3283716821ea5a1a52480df19906f3a63cfcb62460ca109903120dbeca3100d7": {
+      "date": "2026-10-08",
+      "target": "RECOVERY",
+      "result": "No diagnostic USB console; user reported red normal-boot/ramdisk error; original rescue restored and Alpine verified.",
+      "reported_text": "could not do normal boot ramdisk... (partial transcription)",
+      "exact_cause_verified": false,
+      "evidence": "build/kernel/recovery-trial/manifest.json"
+    },
+    "91241065641783f55a6eeaa1542143492afbb2a9fbdd59f26d00f6ab9a311c35": {
+      "date": "2026-10-08",
+      "target": "RECOVERY",
+      "result": "Smaller gzip-kernel FIT trial: full partition read-back passed and BOOT was unchanged; no diagnostic USB, normal Alpine return or Download Mode observed. Manual recovery pending.",
+      "reported_text": null,
+      "exact_cause_verified": false,
+      "evidence": "build/kernel/recovery-trial-gzip/manifest.json"
+    },
+    "e7529556990e39d2f1618417aef8c45b420369f9f187d14618009d52f6493cba": {
+      "date": "2026-10-08",
+      "target": "RECOVERY",
+      "result": "Third embedded FIT/empty Android ramdisk/stub DTBH trial: full read-back passed and BOOT unchanged; no diagnostic USB or normal Alpine return in 180 seconds, user saw Samsung logo. User entered Download Mode; current UI rescue restored by Odin and full read-back verified. Normal Alpine and pinned SSH returned at 192.168.1.145.",
+      "reported_text": "Samsung logosunda kaliyor",
+      "exact_cause_verified": false,
+      "evidence": "build/kernel/recovery-trial-embedded/manifest.json"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# Written by Claude 2026-10-09. Until the kernel image reports it directly,
+# remap the first touch key (recents) from KEY_APPSELECT to KEY_PROG1.
+evdev:name:tm2-touchkey:*
+ KEYBOARD_KEY_00=prog1

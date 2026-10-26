@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Codex 2026-10-10: isolated native display TRIAL, not the installed top.
+ * Claude 2026-10-10: rebased copy (base: display-prepared2 -> suspend layer).
+ * Firmware simpledrm must not race the native DECON driver. Its RAM and
+ * ramoops reservations remain intact. Keep measured physical DMA and the
+ * disabled display SysMMU; no IOMMU bypass write is introduced here.
+ *
+ * The panel stays a manually loaded module requiring allow_init=1.
+ * Before loading it, enable the root-only DSIM j701f_vendor_timing parameter
+ * with no graphical session running. No brightness/suspend support yet.
+ */
+#include "exynos7870-j7velte-display-prepared2.dts"
+
+&{/chosen/framebuffer@67000000} {
+	status = "disabled";
+};
+
+&decon {
+	/delete-property/ iommus;
+	status = "okay";
+};
+
+&dsi {
+	status = "okay";
+};
+
+&sysmmu_decon {
+	status = "disabled";
+};

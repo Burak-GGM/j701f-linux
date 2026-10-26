@@ -1,0 +1,76 @@
+#!/bin/sh
+# BOOT's PID 1: validate the project root before any writable storage mount.
+export PATH=/bin HOME=/ TERM=vt100
+bb=/bin/busybox
+root=/newroot
+
+rescue() {
+    if [ -e /etc/j701f-ram-test ]; then
+        printf 'RAM loader failure: %s\n' "$*" >&2
+        exit 1
+    fi
+    printf 'J701F loader: %s; starting RAM rescue environment.\n' "$*" > /dev/console 2>/dev/null || :
+    [ ! -d "$root" ] || "$bb" umount "$root" 2>/dev/null || :
+    exec /bin/sh /init-rescue
+}
+
+[ "$$" = 1 ] || { printf 'BOOT init must run as PID 1\n' >&2; exit 1; }
+. /etc/j701f-loader.conf
+if [ ! -e /etc/j701f-ram-test ]; then
+    "$bb" mount -t proc -o nosuid,nodev,noexec proc /proc || rescue 'proc mount failed'
+    "$bb" mount -t sysfs -o nosuid,nodev,noexec sysfs /sys || rescue 'sysfs mount failed'
+    "$bb" mount -t devtmpfs -o nosuid devtmpfs /dev || rescue 'devtmpfs mount failed'
+    [ -c /dev/console ] || "$bb" mknod -m 600 /dev/console c 5 1
+    [ -c /dev/null ] || "$bb" mknod -m 666 /dev/null c 1 3
+    [ -c /dev/tty ] || "$bb" mknod -m 666 /dev/tty c 5 0
+    [ -c /dev/kmsg ] || "$bb" mknod -m 600 /dev/kmsg c 1 11
+    "$bb" mkdir -p /dev/pts
+    "$bb" mount -t devpts -o nosuid,noexec,mode=0620 devpts /dev/pts || rescue 'devpts mount failed'
+    "$bb" mount -t tmpfs -o nosuid,nodev,mode=1777,size=16m tmpfs /tmp || rescue 'tmpfs mount failed'
+    "$bb" mkdir -p "$root"
+    attempts=0
+    while ! /bin/boot-manager inspect > /tmp/loader-layout.log 2>&1; do
+        attempts=$((attempts + 1))
+        [ "$attempts" -lt 15 ] || rescue 'partition layout missing or mismatched'
+        "$bb" sleep 1
+    done
+    node=
+    for candidate in /sys/class/block/*; do
+        [ -r "$candidate/uevent" ] || continue
+        "$bb" grep -qx 'PARTNAME=USERDATA' "$candidate/uevent" || continue
+        [ -z "$node" ] || rescue 'ambiguous USERDATA'
+        numbers=$("$bb" cat "$candidate/dev")
+        major=${numbers%:*}; minor=${numbers#*:}
+        case "$major" in ''|*[!0-9]*) rescue 'bad major' ;; esac
+        case "$minor" in ''|*[!0-9]*) rescue 'bad minor' ;; esac
+        node=/dev/j701f-linux-root
+        "$bb" mknod -m 600 "$node" b "$major" "$minor" || rescue 'device node failed'
+    done
+    [ -n "$node" ] || rescue 'no USERDATA target'
+    identity=$("$bb" blkid "$node")
+    case "$identity" in *"UUID=\"$ROOT_UUID\""*"TYPE=\"ext4\""*) ;; *) rescue 'DATA does not contain the selected Linux filesystem' ;; esac
+    "$bb" mount -t ext4 -o ro,noload "$node" "$root" || rescue 'read-only root mount failed'
+fi
+
+/bin/boot-manager validate-root "$root" || rescue 'root validation failed'
+[ "$("$bb" cat "$root/etc/j701f-system-version")" = "$SYSTEM_VERSION" ] || rescue 'BOOT and root versions differ'
+if [ ! -e /etc/j701f-ram-test ]; then
+    # Reopen with normal ext4 journal handling; never make a noload mount writable.
+    "$bb" umount "$root" || rescue 'root inspection unmount failed'
+    "$bb" mount -t ext4 -o rw "$node" "$root" || rescue 'writable Linux root mount failed'
+    /bin/boot-manager validate-root "$root" || rescue 'root changed during reopen'
+fi
+
+"$bb" mkdir -p "$root/dev" "$root/proc" "$root/sys" "$root/tmp"
+# Check destinations before moving mounts: a failure after a partial move
+# must not attempt a half-mounted rescue. Fall back before changing topology.
+for directory in dev proc sys tmp; do
+    [ -d "$root/$directory" ] && [ ! -L "$root/$directory" ] || rescue 'invalid virtual mount destination'
+done
+for directory in dev sys tmp proc; do
+    "$bb" mount --move "/$directory" "$root/$directory" || {
+        printf 'Mount handoff failed at %s. Reset into RECOVERY to diagnose.\n' "$directory" >&2
+        while :; do "$bb" sleep 60; done
+    }
+done
+exec "$bb" switch_root "$root" /sbin/init

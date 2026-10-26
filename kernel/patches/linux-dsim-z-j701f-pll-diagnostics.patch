@@ -1,0 +1,70 @@
+From: Codex <codex@localhost>
+Subject: [PATCH] drm/bridge: samsung-dsim: observe J701F PLL completion state
+
+The first RAM native trial times out once, then later exposes a stable PLL
+and working DCS/page flips. Record the interrupt mask before programming,
+the previous link/PLL state, the mask and link status after waiting, and
+the reset completion state.
+This distinguishes an absent completion from a physically unlocked PLL.
+
+Only the existing privileged, machine-restricted J701F trial opt-in emits
+these observations. No interrupt/FIFO registers are read, no extra writes
+are made, and an absent completion still fails initialization. This is
+diagnostic instrumentation, not a claimed hardware fix.
+---
+
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -798,6 +798,21 @@
+ 	return best_freq;
+ }
+ 
++/* Observe the timeout without changing the PLL or interrupt-mask policy. */
++static void samsung_dsim_j701f_pll_diagnostic(struct samsung_dsim *dsi,
++					    u32 mask_before, u32 link_before,
++					    u32 pll_before, bool ready)
++{
++	if (!samsung_dsim_j701f_trial(dsi))
++		return;
++
++	dev_info(dsi->dev,
++		 "J701F PLL completion=%u mask_before=%#010x mask_now=%#010x link_before=%#010x link_now=%#010x pll_before=%#010x reset_done=%u\n",
++		 ready, mask_before, samsung_dsim_read(dsi, DSIM_INTMSK_REG),
++		 link_before, samsung_dsim_read(dsi, DSIM_LINK_STATUS_REG),
++		 pll_before, completion_done(&dsi->completed));
++}
++
+ static unsigned long samsung_dsim_set_pll(struct samsung_dsim *dsi,
+ 					  unsigned long freq)
+ {
+@@ -806,7 +821,8 @@
+ 	unsigned int timeout;
+ 	u8 p, s;
+ 	u16 m;
+-	u32 reg;
++	u32 reg, mask_before = 0, link_before = 0, pll_before = 0;
++	bool ready;
+ 
+ 	if (dsi->pll_clk) {
+ 		/*
+@@ -877,10 +893,18 @@
+ 			      timeout);
+ 
+ 	reinit_completion(&dsi->pll_stabilized);
++	if (samsung_dsim_j701f_trial(dsi)) {
++		mask_before = samsung_dsim_read(dsi, DSIM_INTMSK_REG);
++		link_before = samsung_dsim_read(dsi, DSIM_LINK_STATUS_REG);
++		pll_before = samsung_dsim_read(dsi, DSIM_PLLCTRL_REG);
++	}
+ 	samsung_dsim_write(dsi, DSIM_PLLCTRL_REG, reg);
+ 
+-	if (!wait_for_completion_timeout(&dsi->pll_stabilized,
+-					usecs_to_jiffies(timeout))) {
++	ready = wait_for_completion_timeout(&dsi->pll_stabilized,
++					    usecs_to_jiffies(timeout));
++	samsung_dsim_j701f_pll_diagnostic(dsi, mask_before, link_before,
++					   pll_before, ready);
++	if (!ready) {
+ 		dev_err(dsi->dev, "PLL failed to stabilize\n");
+ 		return 0;
+ 	}

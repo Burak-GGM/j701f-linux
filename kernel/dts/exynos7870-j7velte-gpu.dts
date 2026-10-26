@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-08. Ninth stage: the eMMC/Alpine tree plus the
+ * Mali-T830 for Panfrost. Measured on the phone under 6.15 before this change:
+ * PMU G3D CONFIGURATION=0xf, STATUS low nibble 0xf (domain left on by S-BOOT)
+ * and BUCK2 enabled at 775 mV. Nothing in this kernel turns the domain off, so
+ * no power-domain node is described yet. The pinned tree's j6lte enables the
+ * GPU with status alone; mali-supply (BUCK2) comes from the diagnostic base.
+ * No OPP table: the GPU runs at the firmware clock/voltage, no devfreq.
+ */
+#include "exynos7870-j7velte-emmc.dts"
+
+&cmu_g3d {
+    status = "okay";
+};
+
+&gpu {
+    status = "okay";
+};

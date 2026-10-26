@@ -1,0 +1,17 @@
+{
+  "updated": "2026-10-08",
+  "manual_recovery_available": true,
+  "independent_recovery_verified": false,
+  "reason": "User physically placed the handset in Download Mode; verified working RECOVERY restored via Odin and full read-back.",
+  "recovery_assessment": "No proven control path remains after a pre-Linux rejection. The diagnostic userspace timer requires /init; vendor watchdog shutdown stops the hardware timer; kexec is unavailable in the running kernel.",
+  "next_hardware_trial_requires": "A changed, validated candidate and working rescue path. Do not repeat either rejected unchanged image.",
+  "unattended_failure_accepted": true,
+  "accepted_unattended_candidate_sha256": "91241065641783f55a6eeaa1542143492afbb2a9fbdd59f26d00f6ab9a311c35",
+  "accepted_attempt_consumed": true,
+  "authorization": "User selected: Try now; I accept losing phone access until I am home.",
+  "last_trial_result": "Third changed candidate failed at Samsung logo with no diagnostic USB. Current new UI rescue restored through physical Download Mode, full RECOVERY/BOOT read-back verified; normal Alpine/UI/Wi-Fi/pinned SSH returned at 192.168.1.145.",
+  "current_working_rescue": "build/ui-v2-fast-input/RECOVERY-ui-v2-working-restore.tar",
+  "current_working_recovery_sha256": "75dd7d3d1a44ea91b9b72afefd21f3eeadcdb828b2e1851d8d6d8b11b4b5da93",
+  "last_trial_manifest": "build/kernel/recovery-trial-embedded/manifest.json",
+  "authorization_latest": "User 2026-10-08: kernel flashlayabilirsin hazirsa. Changed host-validated candidate tried in RECOVERY, then current UI rescue restored."
+}

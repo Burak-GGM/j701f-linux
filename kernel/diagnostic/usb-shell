@@ -1,0 +1,9 @@
+#!/bin/sh
+export PATH=/bin:/sbin HOME=/root TERM=vt100
+export PS1='j701f-mainline # '
+printf '\r\nJ701F mainline diagnostic root shell (local USB, unauthenticated)\r\n'
+uname -a
+printf 'No block filesystems mounted by this initramfs. RAM logs:\r\n'
+printf '  cat /run/stage-ready; cat /run/usb.log; dmesg\r\n'
+printf '  cat /proc/meminfo; cat /sys/devices/system/cpu/online\r\n'
+exec /bin/sh -i

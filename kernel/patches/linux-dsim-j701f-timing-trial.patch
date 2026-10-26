@@ -1,0 +1,87 @@
+From: Codex <codex@localhost>
+Subject: [EXPERIMENTAL, NOT ENABLED] drm/bridge: samsung-dsim: J701F timing trial
+
+Match the J701F firmware and Samsung vendor horizontal pixel counts and
+vertical command/stable-VFP fields. This profile is restricted to j7velte,
+Exynos7870, and an explicit privileged parameter opt-in. Default driver
+behaviour and all other machines remain unchanged. Reject a vertical front
+porch that cannot represent the vendor command budget in four bits.
+
+No hardware result is claimed. Keep the common PLL search and its limits,
+and measure actual link stability in the trial. The parameter is root-only
+and must be enabled before loading the experimental panel, with no active
+native display session. U-Boot overrides DT bootargs, so a DT-only kernel
+command-line option is insufficient for this project.
+---
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -18,6 +18,7 @@
+ #include <linux/irq.h>
+ #include <linux/media-bus-format.h>
+ #include <linux/minmax.h>
++#include <linux/moduleparam.h>
+ #include <linux/of.h>
+ #include <linux/phy/phy.h>
+ #include <linux/platform_device.h>
+@@ -28,6 +29,18 @@
+ #include <drm/bridge/samsung-dsim.h>
+ #include <drm/drm_panel.h>
+ #include <drm/drm_print.h>
++
++/* Local J701F bring-up profile, deliberately off by default. */
++static bool j701f_vendor_timing;
++module_param(j701f_vendor_timing, bool, 0600);
++MODULE_PARM_DESC(j701f_vendor_timing, "Use measured J701F DSIM porch programming for display trials");
++
++static bool samsung_dsim_j701f_trial(struct samsung_dsim *dsi)
++{
++	return j701f_vendor_timing &&
++		dsi->plat_data->hw_type == DSIM_TYPE_EXYNOS7870 &&
++		of_machine_is_compatible("samsung,j7velte");
++}
+ 
+ /* returns true iff both arguments logically differs */
+ #define NEQV(a, b) (!(a) ^ !(b))
+@@ -1195,12 +1208,26 @@
+ 		hbp = max(hbp - 6, 0);
+ 		hsa = max(hsa - 6, 0);
+ 
++		/* Vendor J701F uses horizontal pixel counts, not byte clocks. */
++		if (samsung_dsim_j701f_trial(dsi)) {
++			hfp = m->hsync_start - m->hdisplay;
++			hbp = m->htotal - m->hsync_end;
++			hsa = m->hsync_end - m->hsync_start;
++		}
++
+ 		dev_dbg(dsi->dev, "calculated hfp: %u, hbp: %u, hsa: %u",
+ 			hfp, hbp, hsa);
+ 
+ 		reg = DSIM_CMD_ALLOW(0xf)
+ 			| DSIM_STABLE_VFP(m->vsync_start - m->vdisplay)
+ 			| DSIM_MAIN_VBP(m->vtotal - m->vsync_end);
++		if (samsung_dsim_j701f_trial(dsi)) {
++			int vfp = m->vsync_start - m->vdisplay;
++
++			/* atomic_check restricts VFP to the 4-bit command budget. */
++			reg = DSIM_CMD_ALLOW(vfp - 3) | DSIM_STABLE_VFP(1) |
++				DSIM_MAIN_VBP(m->vtotal - m->vsync_end);
++		}
+ 		samsung_dsim_write(dsi, DSIM_MVPORCH_REG, reg);
+ 
+ 		reg = DSIM_MAIN_HFP(hfp) | DSIM_MAIN_HBP(hbp);
+@@ -1786,6 +1813,13 @@
+ 	struct samsung_dsim *dsi = bridge_to_dsi(bridge);
+ 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+ 
++	if (samsung_dsim_j701f_trial(dsi)) {
++		int vfp = adjusted_mode->vsync_start - adjusted_mode->vdisplay;
++
++		if (vfp < 3 || vfp > 18)
++			return -EINVAL;
++	}
++
+ 	/*
+ 	 * The i.MX8M Mini/Nano glue logic between LCDIF and DSIM
+ 	 * inverts HS/VS/DE sync signals polarity, therefore, while

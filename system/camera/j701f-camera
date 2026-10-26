@@ -1,0 +1,15 @@
+#!/bin/sh
+# Written by Claude 2026-10-10. Started from the "Camera (rear)" / "Camera (front)"
+# launchers: takes one photograph with j701f-photo and opens the gallery.
+# There is no preview; the picture is taken about three seconds after the tap.
+which=${1:-rear}
+notify-send -t 4000 "Camera" "Taking a picture with the $which camera - hold still" 2>/dev/null
+file=$(sudo -n /usr/local/bin/j701f-photo "$which" 2>/tmp/j701f-camera.log) || {
+    notify-send -t 8000 "Camera" "No picture: $(tail -1 /tmp/j701f-camera.log)" 2>/dev/null
+    exit 1
+}
+notify-send -t 6000 "Camera" "Saved ${file##*/} in Pictures/Camera" 2>/dev/null
+# Koko 26.x on this Alpine exits with QML errors when it is given a file to open
+# ("Cannot create a component in an invalid context"); started plainly it shows
+# the picture library, the Camera folder included.
+exec koko

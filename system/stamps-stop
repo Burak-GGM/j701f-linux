@@ -1,0 +1,7 @@
+#!/bin/sh
+# Written by Claude 2026-10-09. Installed as /etc/local.d/j701f-stamps.stop.
+# The "pending" stamps of j701f-gpufreq.start and j701f-audio.start are meant
+# to catch a reset (watchdog, panic) shortly after boot. An orderly reboot or
+# power-off inside that window is not a failure, so clear them here.
+rm -f /var/lib/j701f-gpufreq.pending /var/lib/j701f-audio.pending /var/lib/j701f-display.pending
+sync

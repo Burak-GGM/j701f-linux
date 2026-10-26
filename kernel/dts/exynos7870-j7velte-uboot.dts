@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
+/* U-Boot only transfers RAM payloads; Linux owns peripheral bring-up. */
+#include "exynos7870-j7velte-diagnostic.dts"
+
+&hsi2c0 { status = "disabled"; };
+&usbdrd { status = "disabled"; };
+&usbdrd_phy { status = "disabled"; };
+&serial2 { status = "disabled"; };

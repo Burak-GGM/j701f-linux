@@ -1,0 +1,114 @@
+#!/bin/sh
+# Loader v0.2: identify the agreed internal layout and inspect a candidate root.
+# No persistent writes, repair, format, reboot, root execution or PID 1 handoff.
+umask 077
+bb=/bin/busybox
+blocks=/sys/class/block
+
+fail() { printf 'Loader: %s\n' "$*" >&2; exit 1; }
+
+# Never source uevent or filesystem content as shell code.
+field() {
+    "$bb" awk -F= -v key="$2" '$1 == key {print substr($0,length(key)+2)}' "$1"
+}
+
+discover() {
+    boot= recovery= system= data= parent_seen=
+    for entry in "$blocks"/*; do
+        [ -r "$entry/uevent" ] && [ -r "$entry/partition" ] || continue
+        label=$(field "$entry/uevent" PARTNAME)
+        case "$label" in BOOT|RECOVERY|SYSTEM|USERDATA) ;; *) continue ;; esac
+        name=$(field "$entry/uevent" DEVNAME)
+        case "$name" in ''|*[!a-zA-Z0-9]*) fail "Invalid device name for $label" ;; esac
+        [ "$name" = "${entry##*/}" ] || fail "Device name mismatch for $label"
+        real=$("$bb" readlink -f "$entry") || fail "Cannot resolve $label"
+        parent_path=${real%/*}
+        parent=${parent_path##*/}
+        [ -r "$blocks/$parent/device/type" ] || fail "No MMC parent for $label"
+        [ "$("$bb" cat "$blocks/$parent/device/type")" = MMC ] || fail "$label is not on internal MMC"
+        [ "$("$bb" cat "$blocks/$parent/removable")" = 0 ] || fail "$label is removable"
+        [ "$("$bb" readlink -f "$blocks/$parent")" = "$parent_path" ] || fail "Parent mismatch for $label"
+        [ -z "$parent_seen" ] || [ "$parent_seen" = "$parent" ] || fail 'Targets belong to different devices'
+        parent_seen=$parent
+        sectors=$("$bb" cat "$entry/size")
+        numbers=$("$bb" cat "$entry/dev")
+        major=${numbers%:*}; minor=${numbers#*:}
+        case "$major" in ''|*[!0-9]*) fail "Invalid device numbers for $label" ;; esac
+        case "$minor" in ''|*[!0-9]*) fail "Invalid device numbers for $label" ;; esac
+        [ "$numbers" = "$major:$minor" ] || fail "Invalid device numbers for $label"
+        case "$label" in
+            BOOT) [ -z "$boot" ] || fail 'Ambiguous BOOT'; boot=$name; expected=65536 ;;
+            RECOVERY) [ -z "$recovery" ] || fail 'Ambiguous RECOVERY'; recovery=$name; expected=77824 ;;
+            SYSTEM) [ -z "$system" ] || fail 'Ambiguous SYSTEM'; system=$name; expected=6291456 ;;
+            USERDATA) [ -z "$data" ] || fail 'Ambiguous USERDATA'; data=$name; data_major=$major; data_minor=$minor; expected=23314432 ;;
+        esac
+        [ "$sectors" = "$expected" ] || fail "$label capacity differs from the agreed layout"
+        printf '%s: /dev/%s (%s), %s sectors\n' "$label" "$name" "$numbers" "$sectors"
+    done
+    [ -n "$boot" ] && [ -n "$recovery" ] && [ -n "$system" ] && [ -n "$data" ] || fail 'Required internal partitions are missing'
+    printf 'Layout verified. BOOT/DATA installation has not been performed by this loader.\n'
+}
+
+cleanup() {
+    if [ "$mounted" = yes ]; then
+        if ! "$bb" umount "$root"; then
+            printf 'Loader: could not unmount read-only candidate at %s\n' "$root" >&2
+            return 1
+        fi
+        mounted=no
+    fi
+    [ -z "$root" ] || "$bb" rmdir "$root" || return 1
+    [ -z "$node_dir" ] || "$bb" rm -rf "$node_dir" || return 1
+}
+
+validate_root() {
+    root=$1
+    for directory in etc bin sbin; do
+        [ -d "$root/$directory" ] && [ ! -L "$root/$directory" ] || fail "Candidate has an invalid /$directory"
+    done
+    [ -f "$root/etc/j701f-root" ] && [ ! -L "$root/etc/j701f-root" ] || fail 'DATA is not a prepared J701F Linux root (marker missing)'
+    [ "$("$bb" stat -c %s "$root/etc/j701f-root")" = 21 ] || fail 'Invalid root marker length'
+    [ "$("$bb" cat "$root/etc/j701f-root")" = J701F_ALPINE_ROOT_V1 ] || fail 'Invalid root marker'
+    [ -f "$root/bin/busybox" ] && [ ! -L "$root/bin/busybox" ] && [ -x "$root/bin/busybox" ] || fail 'Candidate BusyBox executable missing'
+    # ELF64, little endian, version 1; ET_EXEC or ET_DYN; EM_AARCH64.
+    magic=$("$bb" od -An -tx1 -N7 "$root/bin/busybox" | "$bb" tr -d ' \n')
+    elf_type=$("$bb" od -An -tx1 -j16 -N4 "$root/bin/busybox" | "$bb" tr -d ' \n')
+    [ "$magic" = 7f454c46020101 ] || fail 'Candidate BusyBox is not little-endian ELF64'
+    case "$elf_type" in 0200b700|0300b700) ;; *) fail 'Candidate BusyBox is not an AArch64 executable' ;; esac
+    [ -L "$root/sbin/init" ] || fail 'First root contract requires /sbin/init linked to BusyBox'
+    case "$("$bb" readlink "$root/sbin/init")" in /bin/busybox|../bin/busybox) ;; *) fail 'Unsupported init link' ;; esac
+}
+
+check_root() {
+    root= node_dir= mounted=no
+    trap 'cleanup' EXIT
+    trap 'exit 1' HUP INT TERM
+    # Private RAM-only node: do not trust a possibly stale /dev partition node.
+    node_dir=$("$bb" mktemp -d /dev/j701f-loader-node.XXXXXX) || fail 'Cannot create RAM node directory'
+    node=$node_dir/data
+    "$bb" mknod "$node" b "$data_major" "$data_minor" || fail 'Cannot create DATA node'
+    root=$("$bb" mktemp -d /tmp/j701f-loader-root.XXXXXX) || fail 'Cannot create RAM mountpoint'
+    "$bb" mount -t ext4 -o ro,noload,nosuid,nodev,noexec "$node" "$root" || fail 'DATA cannot be inspected as read-only ext4 without journal replay'
+    mounted=yes
+    validate_root "$root"
+    printf 'Candidate root structure verified. Kernel/libc compatibility and init configuration still require an execution trial.\n'
+    printf 'Loader v0.2 does not execute this root or switch PID 1.\n'
+    cleanup || exit 1
+    trap - EXIT
+}
+
+if [ "${1:-inspect}" = validate-root ]; then
+    [ "$#" = 2 ] || fail 'Usage: boot-manager validate-root /absolute/path'
+    case "$2" in /*) ;; *) fail 'Root path must be absolute' ;; esac
+    validate_root "$2"
+    printf 'Candidate root validated.\n'
+    exit 0
+fi
+
+case "${1:-inspect}" in
+    inspect|check) [ "$#" -le 1 ] || fail 'Usage: boot-manager [inspect|check]' ;;
+    *) fail 'Usage: boot-manager [inspect|check]. Boot handoff is not enabled in v0.2.' ;;
+esac
+printf 'J701F Linux loader v0.2 — read-only validation\n'
+discover
+[ "${1:-inspect}" != check ] || check_root

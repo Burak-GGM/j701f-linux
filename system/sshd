@@ -1,0 +1,12 @@
+#!/bin/sh
+# Optional SSH service, supervised by the existing BusyBox init.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+while [ ! -x /usr/sbin/sshd ] || [ ! -s /etc/ssh/sshd_config.d/00-j701f.conf ]; do
+    sleep 60
+done
+mkdir -p /run/sshd
+chmod 755 /run/sshd
+ssh-keygen -A || { sleep 15; exit 1; }
+/usr/sbin/sshd -t || { sleep 15; exit 1; }
+exec /usr/sbin/sshd -D -e >> /run/j701f-sshd.log 2>&1

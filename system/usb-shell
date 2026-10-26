@@ -1,0 +1,8 @@
+#!/bin/sh
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root TERM=vt100
+export PS1='burak-alpine # '
+printf '\nBURAK ALPINE LINUX\n'
+cat /etc/alpine-release
+uname -a
+printf 'Local development root shell. Linux root is DATA. Logs: /tmp/boot.log /tmp/usb.log /tmp/display.log\n'
+exec /bin/sh -i

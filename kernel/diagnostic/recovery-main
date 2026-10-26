@@ -1,0 +1,101 @@
+#!/bin/sh
+# Written by Claude 2026-10-10. Recovery mode of the mainline initramfs
+# (roadmap stage R, docs/recovery-design.md). Sourced by /init when the image
+# was built with the recovery UI; defines recovery_main().
+#
+# - The USB serial shell runs the whole time, whatever the screen shows.
+# - /bin/recovery-ui is restarted if it exits; it asks for "boot the system" by
+#   creating /run/boot-system and exiting. /init then continues with the normal
+#   hand-over to Alpine.
+# - Trial safety: unless /run/stay-recovery exists, the system is booted after
+#   RECOVERY_AUTOBOOT seconds without anyone having touched the screen or used
+#   the USB shell. A recovery nobody can operate must not strand the phone.
+#   Over SSH the marker is /run/recovery-state/stay (the only part of /run
+#   that an SSH login shares with the recovery).
+RECOVERY_AUTOBOOT=${RECOVERY_AUTOBOOT:-240}
+
+recovery_main() {
+    : > /run/stay                       # cancels /init's timed reboot
+    # Every BusyBox applet by name: the recovery scripts use ordinary commands
+    # (the first trial lacked sed, awk and pidof).
+    /bin/busybox --install -s /bin 2>/dev/null
+    # The text console must let go of the framebuffer, or the boot diagnostics
+    # printed after the UI's first frame stay on top of it (seen in the first trial).
+    for c in /sys/class/vtconsole/vtcon*; do
+        case "$(cat "$c/name" 2>/dev/null)" in *"frame buffer"*) echo 0 > "$c/bind" 2>/dev/null ;; esac
+    done
+    mkdir -p /run/recovery-state
+    # Own RAM filesystem: the image writer keeps the previous 32 MiB BOOT contents
+    # here for the rollback - briefly two copies, hence 80 MiB (third trial) - and
+    # /run itself is only 8 MiB (second trial).
+    grep -q ' /run/recovery-state ' /proc/mounts || mount -t tmpfs -o size=80m,mode=755 tmpfs /run/recovery-state
+    export J701F_RECOVERY_SCRIPTS=/recovery/scripts J701F_RECOVERY_STATE=/run/recovery-state
+    touch=/dev/input/event0
+    for d in /sys/class/input/event*; do
+        case "$(cat "$d/device/name" 2>/dev/null)" in *[Tt]ouchscreen*) touch=/dev/input/${d##*/} ;; esac
+    done
+    # USB shell alongside the UI (the loop at the end of /init never runs here).
+    (
+        while :; do
+            if [ -c /dev/ttyGS0 ] && [ -e /run/usb-ready ]; then
+                : > /run/usb-shell-used
+                /bin/busybox setsid /bin/busybox getty -L -n -w -l /bin/usb-shell 0 ttyGS0 vt100
+            else
+                sleep 1
+            fi
+        done
+    ) &
+    HANDOFF_KILL="$HANDOFF_KILL $!"
+    (
+        while [ ! -e /run/boot-system ]; do
+            /bin/recovery-ui "$touch" >> /run/recovery-ui.log 2>&1
+            [ -e /run/boot-system ] || sleep 1
+        done
+    ) &
+    ui_loop=$!
+    # Wi-Fi and SSH, so that the recovery can be driven from the computer without
+    # a cable. Borrowed from the installed system (read-only); failure is harmless.
+    # ... and the phone's storage over USB (MTP), after Wi-Fi has had its turn at
+    # mounting the system.
+    ( sleep 8; sh /recovery/scripts/wifi.sh up > /run/recovery-wifi.log 2>&1
+      sh /recovery/scripts/mtp.sh up > /run/recovery-mtp.log 2>&1 ) &
+    waited=0
+    while [ ! -e /run/boot-system ]; do
+        sleep 2
+        waited=$((waited + 2))
+        # Request from an SSH login (tools/run-recovery-update.sh): reboot cleanly.
+        if [ -e /run/recovery-state/reboot ]; then
+            printf 'J701F_RECOVERY_REBOOT_REQUESTED\n' > /dev/kmsg
+            sh /recovery/scripts/power.sh system
+        fi
+        if [ "$waited" -ge "$RECOVERY_AUTOBOOT" ] && [ ! -e /run/stay-recovery ] && [ ! -e /run/recovery-state/stay ] && [ ! -e /run/recovery-touched ]; then
+            printf 'J701F_RECOVERY_AUTOBOOT after %s s without interaction\n' "$waited" > /dev/kmsg
+            : > /run/boot-system
+        fi
+    done
+    kill "$ui_loop" 2>/dev/null
+    for p in $(pidof recovery-ui); do kill "$p" 2>/dev/null; done
+    sleep 1
+    sh /recovery/scripts/mtp.sh down > /dev/null 2>&1
+    sh /recovery/scripts/wifi.sh down > /dev/null 2>&1
+    # The UI may have mounted the installed system read-only (and the SD card).
+    # Both must be gone before /init mounts the system for real: a second mount
+    # of the same filesystem would silently share the read-only one.
+    for m in /mnt/root /mnt/sd; do
+        for try in 1 2 3; do
+            grep -q " $m " /proc/mounts || break
+            umount "$m" 2>/dev/null || sleep 1
+        done
+        if grep -q " $m " /proc/mounts; then
+            printf 'J701F_RECOVERY_UMOUNT_FAILED %s, rebooting instead of handing over\n' "$m" > /dev/kmsg
+            sync
+            reboot -f
+        fi
+    done
+    # storage.sh made the system partition read-only for its mounts; the system
+    # needs it writable again.
+    for d in /sys/class/block/mmcblk0p*; do
+        grep -qx 'PARTNAME=USERDATA' "$d/uevent" 2>/dev/null && blockdev --setrw "/dev/${d##*/}"
+    done
+    printf 'J701F_RECOVERY_BOOTING_SYSTEM\n' > /dev/kmsg
+}

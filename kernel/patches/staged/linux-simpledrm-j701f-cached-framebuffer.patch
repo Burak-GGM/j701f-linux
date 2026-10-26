@@ -1,0 +1,104 @@
+From: Claude <noreply@anthropic.com>
+Subject: drm/sysfb: optional cacheable framebuffer mapping (J701F local)
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+The bootloader framebuffer of this phone is ordinary RAM that the display
+controller reads by DMA. Through the write-combining mapping simpledrm needs
+22-26 ms to convert and store one 720x1280 frame, which caps the compositor at
+38-44 frames per second. With the boolean property "j701f,cached-framebuffer"
+in the simple-framebuffer node (and a "memory-region"), the visible part is
+mapped cacheable and each plane update ends with dcache_clean_poc() on the
+range it wrote.
+
+NOT USED (staged only). Tested on the phone 2026-10-10 as image "fbmem2": the
+pixels reached the framebuffer correctly (checked through /dev/mem), but the
+frame rate did not change (42 fps against 44 with the plain memory-region
+mapping). A profile showed why: the time goes into the per-pixel conversion
+loop, not into the stores. Kept for reference only.
+---
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_helper.h
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_helper.h
+@@ -80,6 +80,13 @@
+ 
+ 	/* hardware-framebuffer kernel address */
+ 	struct iosys_map fb_addr;
++
++	/*
++	 * J701F local: the framebuffer is ordinary RAM mapped cacheable; every
++	 * update is followed by a cache clean so that the scanout hardware,
++	 * which reads the RAM directly, sees it.
++	 */
++	bool fb_cached;
+ };
+ 
+ static inline struct drm_sysfb_device *to_drm_sysfb_device(struct drm_device *dev)
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
+@@ -18,6 +18,19 @@
+ 
+ #include "drm_sysfb_helper.h"
+ 
++#ifdef CONFIG_ARM64
++#include <asm/cacheflush.h>
++#endif
++
++/* J701F local: push a cacheable framebuffer range out to RAM; see drm_sysfb_helper.h. */
++static void drm_sysfb_clean_cache(struct drm_sysfb_device *sysfb, void *vaddr, size_t len)
++{
++#ifdef CONFIG_ARM64
++	if (sysfb->fb_cached && len)
++		dcache_clean_poc((unsigned long)vaddr, (unsigned long)vaddr + len);
++#endif
++}
++
+ struct drm_display_mode drm_sysfb_mode(unsigned int width,
+ 				       unsigned int height,
+ 				       unsigned int width_mm,
+@@ -362,6 +375,10 @@
+ 		iosys_map_incr(&dst, drm_fb_clip_offset(dst_pitch, dst_format, &dst_clip));
+ 		blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &damage,
+ 			     &shadow_plane_state->fmtcnv_state);
++		if (!dst.is_iomem)
++			drm_sysfb_clean_cache(sysfb, dst.vaddr,
++					      (drm_rect_height(&dst_clip) - 1) * sysfb->fb_pitch +
++					      drm_rect_width(&dst_clip) * dst_format->cpp[0]);
+ 	}
+ 
+ 	drm_dev_exit(idx);
+@@ -400,6 +417,9 @@
+ 		memset_io(dst_vmap, 0, linepixels * dst_format->cpp[0]);
+ 		dst_vmap += dst_pitch;
+ 	}
++	if (!dst.is_iomem && lines)
++		drm_sysfb_clean_cache(sysfb, dst.vaddr + drm_fb_clip_offset(dst_pitch, dst_format, &dst_clip),
++				      (lines - 1) * dst_pitch + linepixels * dst_format->cpp[0]);
+ 
+ 	drm_dev_exit(idx);
+ }
+--- a/drivers/gpu/drm/sysfb/simpledrm.c
++++ b/drivers/gpu/drm/sysfb/simpledrm.c
+@@ -701,7 +701,23 @@
+ 
+ 		drm_dbg(dev, "using system memory framebuffer at %pr\n", mem);
+ 
+-		screen_base = devm_memremap(dev->dev, mem->start, resource_size(mem), MEMREMAP_WC);
++		/*
++		 * J701F local: "j701f,cached-framebuffer" in the simple-framebuffer
++		 * node maps the visible part of a RAM framebuffer cacheable. Writes
++		 * through a write-combining mapping cost 22 ms per 720x1280 frame
++		 * on this SoC; the helper cleans the cache after each update.
++		 */
++		if (IS_ENABLED(CONFIG_ARM64) &&
++		    of_property_read_bool(pdev->dev.of_node, "j701f,cached-framebuffer")) {
++			screen_base = devm_memremap(dev->dev, mem->start,
++						    PAGE_ALIGN((size_t)stride * height), MEMREMAP_WB);
++			sysfb->fb_cached = !IS_ERR(screen_base);
++			if (sysfb->fb_cached)
++				drm_info(dev, "framebuffer mapped cacheable (J701F local)\n");
++		} else {
++			screen_base = devm_memremap(dev->dev, mem->start, resource_size(mem),
++						    MEMREMAP_WC);
++		}
+ 		if (IS_ERR(screen_base))
+ 			return screen_base;
+ 

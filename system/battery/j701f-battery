@@ -1,0 +1,171 @@
+#!/bin/sh
+# Written by Claude 2026-10-13. Meant to be installed on the phone as
+# /usr/local/sbin/j701f-battery and started by /etc/init.d/j701f-battery
+# (see j701f-battery.initd; NOT installed as a boot service yet - that needs
+# the owner's yes). Until then: sudo sh ~/j701f/battery/j701f-battery &
+#
+# Jobs the vendor kernel does inside its battery drivers and the mainline
+# drivers leave undone, as one 30-second loop:
+#
+# 1. Fuel gauge mode. The S2MU005 gauge counts charge in "current mode" and
+#    drifts; the vendor corrects it by switching the chip to "voltage mode"
+#    (register 0x4A: 0x10 current, 0xFF voltage) near full and near empty,
+#    where the cell voltage says more than the counter. Without it the
+#    percentage drifted without limit (43 % shown on a full battery,
+#    2026-10-13). Conditions and thresholds are those of s2mu005_get_rawsoc()
+#    in the vendor driver (revision >= 2 branch). One register is written.
+#
+# 2. Charge current by battery temperature (needs j701f_adc.ko; skipped when
+#    no temperature can be read). The charger driver sets conservative
+#    limits by cable type. With a wall charger and the battery between 15
+#    and 41 degC this raises them to the driver's maximum; when the battery is
+#    cold or hot it lowers the charge current as the vendor's table does
+#    (700 mA below 15 degC, 450 mA below 5 or above 41 degC) and above 50 or
+#    below 0 degC switches charging off through the charger's
+#    charge_behaviour file (the phone then runs from the cable), on again
+#    below 45 / above 5 degC. This is stricter than the vendor between 41
+#    and 45 degC (1050 mA there). Charging that somebody else switched off
+#    is left alone.
+#
+# 3. Optional charge limit: "charge_limit=80" in /etc/j701f-battery.conf stops
+#    charging at 80 % and resumes at 75 %. Off unless that file says so.
+#    Values are written through the charger's sysfs files only when they
+#    differ from what is set.
+#
+# Paths can be overridden from the environment (the tests do).
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+FG=${J701F_FG:-/sys/class/power_supply/s2mu005-fuel-gauge}
+CHG=${J701F_CHG:-/sys/class/power_supply/s2mu005-charger}
+HWMON=${J701F_HWMON:-/sys/class/hwmon}
+I2CSET=${J701F_I2CSET:-i2cset}
+I2CGET=${J701F_I2CGET:-i2cget}
+CONF=${J701F_CONF:-/etc/j701f-battery.conf}
+FLOAT_MV=4350
+INTERVAL=${1:-30}
+ROUNDS=${2:-0}          # 0: for ever (the tests pass a number)
+dev=$(readlink -f "$FG/device") || exit 1
+bus=${dev##*/}; bus=${bus%%-*}
+command -v "$I2CSET" >/dev/null || { echo "i2c-tools missing"; exit 1; }
+say() { logger -t j701f-battery "$*" 2>/dev/null; [ -z "$J701F_VERBOSE" ] || echo "$*"; }
+getreg() { "$I2CGET" -f -y "$bus" 0x3b 0x4a 2>/dev/null; }
+setreg() { "$I2CSET" -f -y "$bus" 0x3b 0x4a "$1" && say "gauge: $2 (soc $cap %, $vavg mV, $iavg mA)"; }
+
+batt_temp() {            # tenths of a degree, or nothing
+    for h in "$HWMON"/hwmon*; do
+        [ "$(cat "$h/name" 2>/dev/null)" = j701f_adc ] || continue
+        t=$(cat "$h/temp1_input" 2>/dev/null) || return
+        echo $(( t / 100 )); return
+    done
+}
+setlimit() {             # file, mA
+    [ "$(cat "$CHG/$1" 2>/dev/null)" = "$(( $2 * 1000 ))" ] && return
+    echo "$(( $2 * 1000 ))" > "$CHG/$1" 2>/dev/null && say "charger: $1 = $2 mA (battery ${tdeg:-?} degC, $type)"
+}
+behave() {               # auto | inhibit-charge; fails when the driver has no such file
+    [ -w "$CHG/charge_behaviour" ] || return 1
+    cur=$(cat "$CHG/charge_behaviour"); case "$cur" in *\[*) cur=${cur#*[}; cur=${cur%%]*} ;; esac
+    [ "$cur" = "$1" ] && return 0
+    echo "$1" > "$CHG/charge_behaviour" && say "charger: $1 ($2; battery $cap %, ${tdeg:-?} degC)"
+}
+cable() {                # the bracketed word of usb_type
+    sed -n 's/.*\[\(.*\)\].*/\1/p' "$CHG/usb_type" 2>/dev/null
+}
+
+mode=current
+zone=
+inhibited=
+limited=
+n=0
+while :; do
+    cap=$(cat "$FG/capacity" 2>/dev/null) || { sleep "$INTERVAL"; continue; }
+    vavg=$(( $(cat "$FG/voltage_avg") / 1000 ))
+    iavg=$(( $(cat "$FG/current_avg") / 1000 ))
+    online=$(cat "$CHG/online" 2>/dev/null || echo 0)
+
+    # --- 1. fuel gauge mode ---
+    reg=$(getreg)
+    # After a restart of this script: recognise the mode the chip is already in.
+    if [ "$mode" = current ] && [ "$reg" = 0xff ]; then
+        if [ "$vavg" -gt 4000 ]; then mode=high; else mode=low; fi
+    fi
+    if [ "$iavg" -lt -500 ]; then rbat=10; else rbat=30; fi
+    ocv=$(( vavg - iavg * rbat / 100 ))
+
+    if [ "$cap" -le 3 ] || { [ "$ocv" -le 3600 ] && [ "$iavg" -lt 10 ]; }; then
+        [ "$mode" != current ] || { setreg 0xff "voltage mode (low)" && mode=low; }
+    elif [ "$mode" = low ] && { [ "$ocv" -gt 3650 ] || [ "$iavg" -ge 10 ]; }; then
+        setreg 0x10 "current mode (left low)" && mode=current
+    fi
+
+    if [ "$cap" -ge 98 ] ||
+       { [ "$online" = 1 ] && [ "$iavg" -gt 0 ] && [ "$vavg" -gt $(( FLOAT_MV * 996 / 1000 )) ] && [ "$iavg" -lt 500 ]; }; then
+        [ "$mode" != current ] || { setreg 0xff "voltage mode (high)" && mode=high; }
+    elif [ "$mode" = high ] && [ "$cap" -lt 97 ] && { [ "$iavg" -gt 550 ] || [ "$iavg" -lt 10 ]; }; then
+        setreg 0x10 "current mode (left high)" && mode=current
+    fi
+
+    # --- 2. charge current by temperature ---
+    temp=$(batt_temp)
+    tdeg=${temp:+$(( temp / 10 ))}
+    type=$(cable)
+    stop=
+    if [ "$online" = 1 ] && [ -n "$temp" ] && [ -w "$CHG/constant_charge_current" ]; then
+        # Zones with hysteresis (vendor: block 50/recover 45, 41/39, 15/20, 5/10, 0/5 degC).
+        case "$zone" in
+            stop-hot)  [ "$temp" -lt 450 ] && zone=hot ;;
+            hot)       [ "$temp" -lt 390 ] && zone= ;;
+            stop-cold) [ "$temp" -gt 50 ]  && zone=cold ;;
+            cold)      [ "$temp" -gt 100 ] && zone= ;;
+            cool)      [ "$temp" -gt 200 ] && zone= ;;
+        esac
+        if   [ "$temp" -ge 500 ]; then zone=stop-hot
+        elif [ "$temp" -le 0 ];   then zone=stop-cold
+        elif [ "$temp" -ge 450 ] && [ "$zone" != stop-hot ]; then zone=hot
+        elif [ "$temp" -le 50 ]  && [ "$zone" != stop-cold ]; then zone=cold
+        elif [ -z "$zone" ] && [ "$temp" -ge 410 ]; then zone=hot
+        elif [ -z "$zone" ] && [ "$temp" -le 150 ]; then zone=cool
+        fi
+        case "$type" in
+            DCP) base_in=1200; base_chg=1000; fast_in=1550; fast_chg=1500 ;;
+            CDP) base_in=1000; base_chg=1000; fast_in=1000; fast_chg=1000 ;;
+            *)   base_in=500;  base_chg=450;  fast_in=500;  fast_chg=450 ;;
+        esac
+        min() { [ "$1" -lt "$2" ] && echo "$1" || echo "$2"; }
+        case "$zone" in
+            stop-hot|stop-cold) stop=temperature ;;
+            hot)                setlimit constant_charge_current "$(min 450 "$base_chg")" ;;
+            cold)               setlimit constant_charge_current "$(min 450 "$base_chg")" ;;
+            cool)               setlimit constant_charge_current "$(min 700 "$base_chg")" ;;
+            *)                  setlimit input_current_limit "$fast_in"
+                                setlimit constant_charge_current "$fast_chg" ;;
+        esac
+    else
+        zone=
+    fi
+
+    # --- 3. optional charge limit ---
+    # /etc/j701f-battery.conf with a line "charge_limit=80" (50..99): charging
+    # stops at that percentage and starts again five points below it. Kinder
+    # to a battery that spends its life on a cable. No file, no limit.
+    limit=$(sed -n 's/^charge_limit=\([0-9][0-9]\)$/\1/p' "$CONF" 2>/dev/null | tail -1)
+    [ -n "$limit" ] && [ "$limit" -ge 50 ] || limit=
+    if [ -z "$limit" ]; then limited=
+    elif [ "$cap" -ge "$limit" ]; then limited=1
+    elif [ "$cap" -le $(( limit - 5 )) ]; then limited=
+    fi
+    [ "$online" != 1 ] || [ -z "$limited" ] || stop=${stop:-limit}
+
+    # Charging off for either reason; back on as soon as neither holds (also
+    # when the cable is pulled or the temperature can no longer be read).
+    if [ -n "$stop" ]; then
+        if behave inhibit-charge "$stop"; then inhibited=1
+        elif [ "$stop" = temperature ]; then setlimit constant_charge_current 100
+        fi
+    elif [ -n "$inhibited" ]; then
+        behave auto "resumed"; inhibited=
+    fi
+
+    n=$((n + 1))
+    [ "$ROUNDS" = 0 ] || [ "$n" -lt "$ROUNDS" ] || exit 0
+    sleep "$INTERVAL"
+done

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Network Toolbox
+Comment=Local Wi-Fi, LAN, Bluetooth and packet diagnostics
+Exec=python3 /home/burak-alpine/j701f/security-toolbox/app.py
+Icon=network-wireless
+Categories=Network;Utility;
+Terminal=false

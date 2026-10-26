@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-10. CPU-idle tree plus what suspend-to-idle needs:
+ *  - the Wi-Fi SDIO card keeps its power while the system sleeps. Without this
+ *    brcmfmac reports "Failed to set pm_flags" on suspend and every SDIO access
+ *    after resume times out (measured with /sys/power/pm_test = devices);
+ * The power and home keys were wake-up sources here for one night. Together
+ * with keep-power-in-suspend that made Angelfish start 1.1 s slower (5.9 ->
+ * 7.1 s, measured across eight images; either property alone is harmless, the
+ * mechanism is not understood), so they are not wake-up sources for now: a
+ * sleeping phone wakes on the clock alarm only.
+ */
+#include "exynos7870-j7velte-cpuidle.dts"
+
+&mmc1 {
+    keep-power-in-suspend;
+};

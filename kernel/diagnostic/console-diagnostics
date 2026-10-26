@@ -1,0 +1,22 @@
+#!/bin/sh
+# Written by Claude 2026-10-08. Seventh diagnostic screen summary: MUIC/USB
+# state and read-only eMMC enumeration on the firmware framebuffer. RAM-only.
+export PATH=/bin:/sbin
+exec > /dev/tty0 2>&1
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+sleep 14
+printf '\033[2J\033[HBURAK LINUX - DIAGNOSTIC 07: USB + eMMC (Claude)\n'
+uname -r
+cat /run/stage-ready
+printf '\n== USB ==\n'
+cat /run/muic.log /run/usb.log
+for u in /sys/class/udc/*; do
+    [ -e "$u" ] && printf 'UDC %s state=%s speed=%s\n' "${u##*/}" "$(cat "$u/state")" "$(cat "$u/current_speed")"
+done
+printf '\n== eMMC (nothing mounted) ==\n'
+dmesg | grep -E 'J701F_STORAGE|host mmc|card mmc|blk mmcblk0 |blk mmcblk0p(1|10|11|2[0-9]) ' | tail -n 16
+[ ! -r /sys/kernel/debug/mmc0/ios ] || grep -E 'clock|bus width|timing spec|signal voltage' /sys/kernel/debug/mmc0/ios
+printf 'partitions: %s\n' "$(grep -c mmcblk0p /proc/partitions)"
+printf '\n== DRIVER MESSAGES ==\n'
+dmesg | grep -Ei 'mmc|dwmmc|dw_mmc|defer|fail|error|timeout' | grep -v J701F_ | tail -n 22
+printf '\nAutomatic normal reboot 90 s after boot (touch /run/stay cancels).\n'

@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. Audio tree plus faster eMMC, stage 1.
+ *
+ * Until now the eMMC ran in "legacy" timing: 25 MHz, measured 21.9 MB/s
+ * sequential read. This stage only allows the High Speed SDR mode (52 MHz).
+ * The vendor tree also uses DDR, HS200 and HS400 on this controller; those
+ * come later, one at a time, because a bad eMMC mode can make the root
+ * filesystem unreadable (the initramfs then falls back to the vendor kernel
+ * after 90 s).
+ */
+#include "exynos7870-j7velte-audio.dts"
+
+&mmc0 {
+    bus-width = <8>;
+    cap-mmc-highspeed;
+};

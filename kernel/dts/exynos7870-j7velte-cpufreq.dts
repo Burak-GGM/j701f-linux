@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. Watchdog tree plus CPU frequency scaling and
+ * thermal throttling.
+ *
+ * cpufreq: local driver (kernel/patches/linux-cpufreq-exynos7870-j701f.patch)
+ * on the two CPU clock controllers and BUCK1. Verified on this phone from 546
+ * to 1586 MHz. Default policy range 546-1352 MHz (driver parameters).
+ *
+ * thermal: the read-only TMU zone now has trips. Passive at 70 C steps the CPU
+ * frequency down through the cpufreq cooling device; "hot" at 85 C only
+ * notifies; critical at 105 C makes the kernel power the phone off. During the
+ * step tests the sensor read 33-44 C; nothing here has been exercised at the
+ * trip temperatures.
+ */
+#include <dt-bindings/thermal/thermal.h>
+#include "exynos7870-j7velte-wdt.dts"
+
+/ {
+    thermal-zones {
+        soc-thermal {
+            polling-delay-passive = <250>;
+            polling-delay = <2000>;
+
+            trips {
+                soc_passive: trip-passive {
+                    temperature = <70000>;
+                    hysteresis = <3000>;
+                    type = "passive";
+                };
+
+                trip-hot {
+                    temperature = <85000>;
+                    hysteresis = <3000>;
+                    type = "hot";
+                };
+
+                trip-critical {
+                    temperature = <105000>;
+                    hysteresis = <0>;
+                    type = "critical";
+                };
+            };
+
+            cooling-maps {
+                map0 {
+                    trip = <&soc_passive>;
+                    cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+                };
+            };
+        };
+    };
+};
+
+&cpu0 {
+    #cooling-cells = <2>;
+};
+
+&soc {
+    cpufreq@10900000 {
+        compatible = "j701f,exynos7870-cpufreq";
+        reg = <0x10900000 0x1000>, <0x10800000 0x1000>;
+        cpu-supply = <&vdd_buck1>;
+    };
+};

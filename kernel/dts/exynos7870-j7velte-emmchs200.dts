@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. eMMC stage 2: HS200 (200 MHz, 1.8 V, tuned).
+ *
+ * The vendor tree has mmc-hs200-1_8v with "hs200-timing = <3 0 3 0>". Mainline
+ * dw_mmc-exynos takes the clock drive phase for HS200 from the SDR timing pair
+ * and finds the sample phase by tuning, so the SDR pair becomes <3 0> here
+ * (it was <0 4>, copied from sibling boards that do not enable HS200).
+ * If the card does not come up, the initramfs falls back to the vendor kernel
+ * after 90 s; the previous image is emmc1b.
+ */
+#include "exynos7870-j7velte-emmchs.dts"
+
+&mmc0 {
+    mmc-hs200-1_8v;
+    samsung,dw-mshc-sdr-timing = <3 0>;
+};

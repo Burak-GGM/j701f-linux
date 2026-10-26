@@ -1,0 +1,2 @@
+# Key-authenticated development account; provision separately on the phone.
+burak-alpine ALL=(root) NOPASSWD: ALL

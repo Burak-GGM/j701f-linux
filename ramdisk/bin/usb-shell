@@ -1,0 +1,11 @@
+#!/bin/sh
+export PATH=/bin
+export HOME=/
+export TERM=vt100
+export PS1='j701f-linux # '
+printf '\nHELLO FROM BURAK\047S J701F LINUX RECOVERY\n'
+uname -a
+printf '\nUSB serial shell is working. Logs: /tmp/boot.log /tmp/usb.log /tmp/display.log\n'
+printf 'Try: cat /tmp/stage1-ready; cat /proc/uptime; dmesg; boot-manager inspect\n'
+printf 'This is an unauthenticated local development root shell. No block partitions were mounted.\n\n'
+exec /bin/sh -i

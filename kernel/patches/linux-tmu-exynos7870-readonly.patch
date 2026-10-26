@@ -1,0 +1,107 @@
+From: Claude <noreply@anthropic.com>
+Subject: thermal: samsung: read-only Exynos7870 TMU sensor (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+---
+--- a/drivers/thermal/samsung/Makefile
++++ b/drivers/thermal/samsung/Makefile
+@@ -4,3 +4,4 @@
+ #
+ obj-$(CONFIG_EXYNOS_THERMAL)			+= exynos_thermal.o
+ exynos_thermal-y				:= exynos_tmu.o
++obj-$(CONFIG_EXYNOS_THERMAL)			+= exynos7870_tmu_ro.o
+--- /dev/null
++++ b/drivers/thermal/samsung/exynos7870_tmu_ro.c
+@@ -0,0 +1,92 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Read-only temperature sensor for the Exynos7870 TMU (J701F local driver).
++ *
++ * Written by Claude 2026-10-09 for the J701F project; not an upstream driver.
++ * The firmware leaves the TMU core running (CONTROL bit 0 set). This driver
++ * only reads the one-point trim value and the current temperature code and
++ * exposes them as a thermal zone sensor. It writes no TMU register, programs
++ * no trip points and arms no hardware reset, so a wrong assumption can produce
++ * a wrong reading but cannot shut the phone down.
++ *
++ * Vendor reference (drivers/thermal/samsung/exynos_tmu_data.c, EXYNOS7870):
++ * 9-bit temperature code, TYPE_ONE_POINT_TRIMMING, first point 25 C,
++ * fallback efuse value 50.
++ */
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/thermal.h>
++
++#define TMU_REG_TRIMINFO	0x00
++#define TMU_REG_CURRENT_TEMP	0x40
++#define TMU_CODE_MASK		0x1ff
++#define TMU_FIRST_POINT_C	25
++#define TMU_EFUSE_FALLBACK	50
++
++struct exynos7870_tmu_ro {
++	void __iomem *base;
++	u32 trim25;
++};
++
++static int exynos7870_tmu_ro_get_temp(struct thermal_zone_device *tz, int *temp)
++{
++	struct exynos7870_tmu_ro *tmu = thermal_zone_device_priv(tz);
++	u32 code = readl(tmu->base + TMU_REG_CURRENT_TEMP) & TMU_CODE_MASK;
++
++	if (!code)
++		return -EAGAIN;
++
++	*temp = ((int)code - (int)tmu->trim25 + TMU_FIRST_POINT_C) * 1000;
++	return 0;
++}
++
++static const struct thermal_zone_device_ops exynos7870_tmu_ro_ops = {
++	.get_temp = exynos7870_tmu_ro_get_temp,
++};
++
++static int exynos7870_tmu_ro_probe(struct platform_device *pdev)
++{
++	struct exynos7870_tmu_ro *tmu;
++	struct thermal_zone_device *tz;
++
++	tmu = devm_kzalloc(&pdev->dev, sizeof(*tmu), GFP_KERNEL);
++	if (!tmu)
++		return -ENOMEM;
++
++	tmu->base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(tmu->base))
++		return PTR_ERR(tmu->base);
++
++	tmu->trim25 = readl(tmu->base + TMU_REG_TRIMINFO) & TMU_CODE_MASK;
++	if (!tmu->trim25)
++		tmu->trim25 = TMU_EFUSE_FALLBACK;
++
++	tz = devm_thermal_of_zone_register(&pdev->dev, 0, tmu,
++					   &exynos7870_tmu_ro_ops);
++	if (IS_ERR(tz))
++		return dev_err_probe(&pdev->dev, PTR_ERR(tz),
++				     "failed to register thermal zone\n");
++
++	dev_info(&pdev->dev, "read-only TMU, trim code %u\n", tmu->trim25);
++	return 0;
++}
++
++static const struct of_device_id exynos7870_tmu_ro_match[] = {
++	{ .compatible = "j701f,exynos7870-tmu-readonly" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, exynos7870_tmu_ro_match);
++
++static struct platform_driver exynos7870_tmu_ro_driver = {
++	.driver = {
++		.name = "exynos7870-tmu-ro",
++		.of_match_table = exynos7870_tmu_ro_match,
++	},
++	.probe = exynos7870_tmu_ro_probe,
++};
++module_platform_driver(exynos7870_tmu_ro_driver);
++
++MODULE_DESCRIPTION("Read-only Exynos7870 TMU sensor (J701F)");
++MODULE_LICENSE("GPL");

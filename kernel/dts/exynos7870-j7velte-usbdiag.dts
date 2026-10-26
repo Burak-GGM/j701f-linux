@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-08. Sixth diagnostic: the fifth (logged) tree plus
+ * the bare I2C bus that carries the S2MU005 MFD/MUIC at 0x3d in the live
+ * vendor tree (i2c@13870000). No client node: userspace probes it through
+ * i2c-dev to test whether the MUIC D+/D- switch is why USB never attaches.
+ */
+#include "exynos7870-j7velte-logged.dts"
+
+&i2c4 {
+    status = "okay";
+};

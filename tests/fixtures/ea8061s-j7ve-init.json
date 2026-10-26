@@ -1,0 +1,87 @@
+{
+  "provenance": {
+    "vendor_commit": "29223d295a58ebe82e95347c8eb8468ea2b1c336",
+    "controller_source": "drivers/video/fbdev/exynos/decon_7870/panels/ea8061s_j7lite_lcd_ctrl.c",
+    "controller_sha256": "7968e47d925408bb3ca9d911f5bfff96989118e00557f93641bd240a0166eff4",
+    "parameters_sha256": "1da5c0b02faa3af63606937daa227d7eb8e298c2f7d16aa44bb9d08e55fae513",
+    "scope": "ea8061s_init static writes, before final calibrated dsim_panel_set_brightness call"
+  },
+  "commands": [
+    {
+      "name": "SEQ_TEST_KEY_ON_F0",
+      "hex": "f05a5a"
+    },
+    {
+      "name": "SEQ_TEST_KEY_ON_FC",
+      "hex": "fc5a5a"
+    },
+    {
+      "name": "SEQ_HSYNC_GEN_ON",
+      "hex": "cf3009"
+    },
+    {
+      "name": "SEQ_SOURCE_SLEW",
+      "hex": "ba77"
+    },
+    {
+      "name": "SEQ_AID_SET",
+      "hex": "b20000000c"
+    },
+    {
+      "name": "SEQ_GAMMA_UPDATE",
+      "hex": "f703"
+    },
+    {
+      "name": "SEQ_S_WIRE",
+      "hex": "b81900"
+    },
+    {
+      "name": "SEQ_SLEEP_OUT",
+      "hex": "11"
+    },
+    {
+      "name": "SEQ_POWER_SEQ",
+      "hex": "b13c890005333114"
+    },
+    {
+      "name": "SEQ_AOR_MAX",
+      "hex": "b200000510"
+    },
+    {
+      "name": "SEQ_GAMMA_UPDATE",
+      "hex": "f703"
+    },
+    {
+      "name": "SEQ_GAMMA_CONDITION_SET",
+      "hex": "ca010001000100808080808080808080808080808080808080808080808080000000"
+    },
+    {
+      "name": "SEQ_AID_SET",
+      "hex": "b20000000c"
+    },
+    {
+      "name": "SEQ_ELVSS_SET",
+      "hex": "b6dc84000000000000"
+    },
+    {
+      "name": "SEQ_ACL_OFF",
+      "hex": "5500"
+    },
+    {
+      "name": "SEQ_GAMMA_UPDATE",
+      "hex": "f703"
+    },
+    {
+      "name": "SEQ_TSET",
+      "hex": "b819"
+    },
+    {
+      "name": "SEQ_TEST_KEY_OFF_F0",
+      "hex": "f0a5a5"
+    },
+    {
+      "name": "SEQ_TEST_KEY_OFF_FC",
+      "hex": "fca5a5"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+# Provisioned separately after installing OpenSSH and the login user's key.
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+AuthenticationMethods publickey
+AllowUsers burak-alpine

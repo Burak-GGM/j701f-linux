@@ -1,0 +1,52 @@
+From: Claude <noreply@anthropic.com>
+Subject: watchdog: s3c2410: option to keep running across suspend (J701F local)
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+Applies on top of linux-wdt-s3c2410-keep-on-shutdown.patch. Safety net for
+unattended suspend experiments: /sys/module/s3c2410_wdt/parameters/keep_on_suspend.
+---
+--- a/drivers/watchdog/s3c2410_wdt.c
++++ b/drivers/watchdog/s3c2410_wdt.c
+@@ -159,6 +159,16 @@
+ static bool keep_on_shutdown;
+ module_param(keep_on_shutdown, bool, 0644);
+ MODULE_PARM_DESC(keep_on_shutdown, "Keep the watchdog running during shutdown/reboot (default=0)");
++/*
++ * J701F local: for suspend experiments. With keep_on_suspend=1 the watchdog is
++ * refreshed and left running when the system suspends, so a suspend or resume
++ * that hangs ends in a reset. The sleep itself must then be shorter than the
++ * watchdog timeout.
++ */
++static bool keep_on_suspend;
++module_param(keep_on_suspend, bool, 0644);
++MODULE_PARM_DESC(keep_on_suspend, "Keep the watchdog running across system suspend (default=0)");
++static bool kept_over_suspend;
+ module_param(soft_noboot, int, 0);
+ 
+ MODULE_PARM_DESC(tmr_margin, "Watchdog tmr_margin in seconds. (default="
+@@ -904,6 +914,13 @@
+ 	int ret;
+ 	struct s3c2410_wdt *wdt = dev_get_drvdata(dev);
+ 
++	kept_over_suspend = keep_on_suspend;
++	if (kept_over_suspend) {
++		s3c2410wdt_keepalive(&wdt->wdt_device);
++		dev_info(dev, "watchdog left running across suspend\n");
++		return 0;
++	}
++
+ 	/* Save watchdog state, and turn it off. */
+ 	wdt->wtcon_save = readl(wdt->reg_base + S3C2410_WTCON);
+ 	wdt->wtdat_save = readl(wdt->reg_base + S3C2410_WTDAT);
+@@ -923,6 +940,11 @@
+ 	int ret;
+ 	struct s3c2410_wdt *wdt = dev_get_drvdata(dev);
+ 
++	if (kept_over_suspend) {
++		s3c2410wdt_keepalive(&wdt->wdt_device);
++		return 0;
++	}
++
+ 	/* Restore watchdog state. */
+ 	writel(wdt->wtdat_save, wdt->reg_base + S3C2410_WTDAT);
+ 	writel(wdt->wtdat_save, wdt->reg_base + S3C2410_WTCNT);/* Reset count */

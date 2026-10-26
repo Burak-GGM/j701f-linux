@@ -1,0 +1,330 @@
+From: Claude <noreply@anthropic.com>
+Subject: cpufreq: Exynos7870 CPU PLL scaling for the SM-J701F (local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+---
+--- a/drivers/cpufreq/Makefile
++++ b/drivers/cpufreq/Makefile
+@@ -15,6 +15,7 @@
+ obj-$(CONFIG_CPU_FREQ_GOV_ATTR_SET)	+= cpufreq_governor_attr_set.o
+ 
+ obj-$(CONFIG_CPUFREQ_DT)		+= cpufreq-dt.o
++obj-$(CONFIG_CPUFREQ_DT)		+= exynos7870-cpufreq.o
+ obj-$(CONFIG_CPUFREQ_DT_RUST)		+= rcpufreq_dt.o
+ obj-$(CONFIG_CPUFREQ_DT_PLATDEV)	+= cpufreq-dt-platdev.o
+ obj-$(CONFIG_CPUFREQ_VIRT)		+= virtual-cpufreq.o
+--- /dev/null
++++ b/drivers/cpufreq/exynos7870-cpufreq.c
+@@ -0,0 +1,312 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * CPU frequency scaling for the Exynos7870 as fitted to the Samsung SM-J701F.
++ *
++ * Written by Claude 2026-10-09 for the J701F project; not an upstream driver.
++ *
++ * Mainline has no clock driver for CMU_CPUCL0/CMU_CPUCL1, so this driver
++ * programs the two CPU PLLs itself, following the vendor DFS sequence:
++ *   1. going up: raise the CPU rail first;
++ *   2. per cluster: select the CMU switch clock on the "switch user" mux, move
++ *      the CPU mux to it, reprogram the PLL, wait for lock, move back;
++ *   3. going down: lower the CPU rail afterwards.
++ * Bus dividers are left as the bootloader set them.
++ *
++ * The frequency/voltage pairs were measured on this phone under the vendor
++ * 3.18 kernel (BUCK1 at each cpufreq step) and carry a 12.5 mV margin here.
++ *
++ * Verified on the phone (2026-10-09): every step from 546 to 1586 MHz was set
++ * through this driver, with BUCK1 following and sysbench scaling linearly on
++ * all eight cores.
++ *
++ * Limits: min_khz/max_khz under /sys/module/exynos7870_cpufreq/parameters/
++ * bound the policy through frequency QoS requests. The default ceiling is
++ * 1352 MHz rather than the 1586 MHz maximum because thermal protection on
++ * this port is new; raise max_khz to use the top steps. Setting both to
++ * 902000 restores the bootloader's fixed frequency. All eight cores share one
++ * policy because they share the rail. The driver is a cooling device, so a
++ * thermal zone can cap the frequency.
++ */
++#include <linux/cpufreq.h>
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <linux/iopoll.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/pm_qos.h>
++#include <linux/regulator/consumer.h>
++
++#define PLL_LOCK		0x000
++#define PLL_CON0		0x100
++#define PLL_CON0_ENABLE		BIT(31)
++#define PLL_CON0_LOCKED		BIT(29)
++#define MUX_SWITCH_USER		0x204
++#define MUX_CLK_CPU		0x208
++#define STAT_SWITCH_USER	0x604
++#define STAT_CLK_CPU		0x608
++#define MUX_SEL			BIT(12)
++#define MUX_STAT_MASK		GENMASK(14, 12)
++#define MUX_STAT_IN0		BIT(12)
++#define MUX_STAT_IN1		BIT(13)
++
++#define BOOT_KHZ		902000
++#define VOLT_MARGIN_UV		12500
++#define VOLT_TOLERANCE_UV	6250
++
++struct e7870_opp {
++	unsigned int khz;
++	unsigned int uv;	/* measured vendor BUCK1 value */
++	u16 m;
++	u8 p;
++	u8 s;
++};
++
++/* fout = 26 MHz * M / (P * 2^S) */
++static const struct e7870_opp e7870_opps[] = {
++	{  546000,  625000, 210, 5, 1 },
++	{  676000,  668750, 260, 5, 1 },
++	{  757000,  693750, 291, 5, 1 },
++	{  839000,  712500, 323, 5, 1 },
++	{  902000,  737500, 347, 5, 1 },
++	{ 1014000,  781250, 195, 5, 0 },
++	{ 1144000,  825000, 220, 5, 0 },
++	{ 1248000,  868750, 240, 5, 0 },
++	{ 1352000,  906250, 260, 5, 0 },
++	{ 1482000,  956250, 285, 5, 0 },
++	{ 1586000, 1006250, 305, 5, 0 },
++};
++
++static struct cpufreq_frequency_table e7870_table[ARRAY_SIZE(e7870_opps) + 1];
++
++struct e7870_cpufreq {
++	struct device *dev;
++	void __iomem *cmu[2];
++	struct regulator *supply;
++	struct freq_qos_request qos_min, qos_max;
++	bool qos_active;
++	unsigned int cur_index;
++};
++
++static struct e7870_cpufreq *e7870;
++
++/* Policy limits in kHz, adjustable through sysfs. */
++static int min_khz = 546000;
++static int max_khz = 1352000;
++
++static int e7870_limit_set(const char *val, const struct kernel_param *kp)
++{
++	int ret = param_set_int(val, kp);
++
++	if (ret)
++		return ret;
++	if (e7870 && e7870->qos_active) {
++		freq_qos_update_request(&e7870->qos_max, max_khz);
++		freq_qos_update_request(&e7870->qos_min, min(min_khz, max_khz));
++	}
++	return 0;
++}
++
++static const struct kernel_param_ops e7870_limit_ops = {
++	.set = e7870_limit_set,
++	.get = param_get_int,
++};
++module_param_cb(min_khz, &e7870_limit_ops, &min_khz, 0644);
++module_param_cb(max_khz, &e7870_limit_ops, &max_khz, 0644);
++MODULE_PARM_DESC(max_khz, "highest frequency the policy may use (default 1352000)");
++
++static int e7870_wait_mux(void __iomem *reg, u32 want)
++{
++	u32 val;
++
++	return readl_poll_timeout_atomic(reg, val, (val & MUX_STAT_MASK) == want,
++					 1, 2000);
++}
++
++static int e7870_set_cluster(struct e7870_cpufreq *priv, int cl,
++			     const struct e7870_opp *opp)
++{
++	void __iomem *base = priv->cmu[cl];
++	u32 val;
++	int ret;
++
++	/* Feed the switch input from the CMU and park the cluster on it. */
++	writel(readl(base + MUX_SWITCH_USER) | MUX_SEL, base + MUX_SWITCH_USER);
++	ret = e7870_wait_mux(base + STAT_SWITCH_USER, MUX_STAT_IN1);
++	if (ret)
++		return ret;
++
++	writel(readl(base + MUX_CLK_CPU) | MUX_SEL, base + MUX_CLK_CPU);
++	ret = e7870_wait_mux(base + STAT_CLK_CPU, MUX_STAT_IN1);
++	if (ret)
++		return ret;
++
++	writel(opp->p * 150, base + PLL_LOCK);
++	writel(PLL_CON0_ENABLE | (opp->m << 16) | (opp->p << 8) | opp->s,
++	       base + PLL_CON0);
++	ret = readl_poll_timeout_atomic(base + PLL_CON0, val,
++					val & PLL_CON0_LOCKED, 1, 5000);
++	if (ret) {
++		/* Stay on the switch clock: slower, but running. */
++		dev_err(priv->dev, "cluster %d PLL did not lock\n", cl);
++		return ret;
++	}
++
++	writel(readl(base + MUX_CLK_CPU) & ~MUX_SEL, base + MUX_CLK_CPU);
++	return e7870_wait_mux(base + STAT_CLK_CPU, MUX_STAT_IN0);
++}
++
++static int e7870_target_index(struct cpufreq_policy *policy, unsigned int index)
++{
++	struct e7870_cpufreq *priv = e7870;
++	const struct e7870_opp *new = &e7870_opps[index];
++	const struct e7870_opp *old = &e7870_opps[priv->cur_index];
++	int uv = new->uv + VOLT_MARGIN_UV;
++	int ret, cl;
++
++	if (index == priv->cur_index)
++		return 0;
++
++	if (new->khz > old->khz) {
++		ret = regulator_set_voltage(priv->supply, uv, uv + VOLT_TOLERANCE_UV);
++		if (ret)
++			return ret;
++	}
++
++	for (cl = 0; cl < 2; cl++) {
++		ret = e7870_set_cluster(priv, cl, new);
++		if (ret) {
++			dev_err(priv->dev, "cluster %d: %u kHz failed (%d)\n",
++				cl, new->khz, ret);
++			return ret;
++		}
++	}
++	priv->cur_index = index;
++
++	if (new->khz < old->khz)
++		regulator_set_voltage(priv->supply, uv, uv + VOLT_TOLERANCE_UV);
++
++	return 0;
++}
++
++static unsigned int e7870_get(unsigned int cpu)
++{
++	u32 con = readl(e7870->cmu[0] + PLL_CON0);
++	u32 m = (con >> 16) & 0x3ff, p = (con >> 8) & 0x3f, s = con & 7;
++
++	unsigned int khz, i;
++
++	if (!p)
++		return 0;
++	khz = 26000 * m / (p << s);
++	/* Report the table value: 26 MHz * 347 / 10 is 902.2 MHz, listed as 902. */
++	for (i = 0; i < ARRAY_SIZE(e7870_opps); i++)
++		if (abs((int)khz - (int)e7870_opps[i].khz) < 2000)
++			return e7870_opps[i].khz;
++	return khz;
++}
++
++static int e7870_cpufreq_init(struct cpufreq_policy *policy)
++{
++	struct e7870_cpufreq *priv = e7870;
++	int ret;
++
++	cpumask_setall(policy->cpus);
++	policy->freq_table = e7870_table;
++	policy->cpuinfo.transition_latency = 500 * NSEC_PER_USEC;
++
++	ret = freq_qos_add_request(&policy->constraints, &priv->qos_max,
++				   FREQ_QOS_MAX, max_khz);
++	if (ret < 0)
++		return ret;
++	ret = freq_qos_add_request(&policy->constraints, &priv->qos_min,
++				   FREQ_QOS_MIN, min_khz);
++	if (ret < 0) {
++		freq_qos_remove_request(&priv->qos_max);
++		return ret;
++	}
++	priv->qos_active = true;
++	return 0;
++}
++
++static void e7870_cpufreq_exit(struct cpufreq_policy *policy)
++{
++	struct e7870_cpufreq *priv = e7870;
++
++	priv->qos_active = false;
++	freq_qos_remove_request(&priv->qos_min);
++	freq_qos_remove_request(&priv->qos_max);
++}
++
++static struct cpufreq_driver e7870_cpufreq_driver = {
++	.name = "exynos7870",
++	.flags = CPUFREQ_NEED_INITIAL_FREQ_CHECK | CPUFREQ_IS_COOLING_DEV,
++	.init = e7870_cpufreq_init,
++	.exit = e7870_cpufreq_exit,
++	.verify = cpufreq_generic_frequency_table_verify,
++	.target_index = e7870_target_index,
++	.get = e7870_get,
++};
++
++static int e7870_cpufreq_probe(struct platform_device *pdev)
++{
++	struct e7870_cpufreq *priv;
++	unsigned int khz, i;
++
++	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
++	if (!priv)
++		return -ENOMEM;
++	priv->dev = &pdev->dev;
++
++	for (i = 0; i < 2; i++) {
++		priv->cmu[i] = devm_platform_ioremap_resource(pdev, i);
++		if (IS_ERR(priv->cmu[i]))
++			return PTR_ERR(priv->cmu[i]);
++	}
++
++	priv->supply = devm_regulator_get(&pdev->dev, "cpu");
++	if (IS_ERR(priv->supply))
++		return dev_err_probe(&pdev->dev, PTR_ERR(priv->supply),
++				     "no cpu supply\n");
++
++	e7870 = priv;
++	khz = e7870_get(0);
++	priv->cur_index = ARRAY_SIZE(e7870_opps);
++	for (i = 0; i < ARRAY_SIZE(e7870_opps); i++) {
++		e7870_table[i].driver_data = i;
++		e7870_table[i].frequency = e7870_opps[i].khz;
++		if (abs((int)khz - (int)e7870_opps[i].khz) < 2000)
++			priv->cur_index = i;
++	}
++	e7870_table[i].frequency = CPUFREQ_TABLE_END;
++
++	/* Refuse to manage a clock state this driver does not recognise. */
++	if (priv->cur_index == ARRAY_SIZE(e7870_opps) ||
++	    e7870_opps[priv->cur_index].khz != BOOT_KHZ ||
++	    (readl(priv->cmu[1] + PLL_CON0) & 0x03ff3f07) !=
++	    (readl(priv->cmu[0] + PLL_CON0) & 0x03ff3f07)) {
++		dev_err(&pdev->dev, "unexpected boot PLL state (%u kHz), not registering\n", khz);
++		e7870 = NULL;
++		return -ENODEV;
++	}
++
++	dev_info(&pdev->dev, "boot frequency %u kHz, limits %d..%d kHz\n",
++		 khz, min_khz, max_khz);
++	return cpufreq_register_driver(&e7870_cpufreq_driver);
++}
++
++static const struct of_device_id e7870_cpufreq_match[] = {
++	{ .compatible = "j701f,exynos7870-cpufreq" },
++	{ }
++};
++
++static struct platform_driver e7870_cpufreq_platdrv = {
++	.driver = {
++		.name = "exynos7870_cpufreq",
++		.of_match_table = e7870_cpufreq_match,
++		.suppress_bind_attrs = true,
++	},
++	.probe = e7870_cpufreq_probe,
++};
++builtin_platform_driver(e7870_cpufreq_platdrv);

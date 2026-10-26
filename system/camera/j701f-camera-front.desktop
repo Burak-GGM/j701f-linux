@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Camera (front)
+Name[tr]=Kamera (ön)
+Comment=Take one photograph (no preview) and show it
+Comment[tr]=Tek bir fotoğraf çek (önizleme yok) ve göster
+Exec=/usr/local/bin/j701f-camera front
+Icon=camera-photo
+Categories=Graphics;Photography;

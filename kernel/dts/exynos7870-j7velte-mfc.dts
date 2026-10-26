@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. phone1 tree plus the hardware video codec
+ * (Samsung MFC), first attempt.
+ *
+ * Vendor tree: mfc0@12C30000, size 0x10000, SPI 354, "samsung,mfc-v6" with
+ * ip_ver 0x0f, one clock (aclk_mfc), power domain MFCMSCL. The domain is on
+ * when mainline boots (PMU 0x4060 = 0xf, status 0x3000f, read with
+ * tools/kmod/j701f_pdinfo.c), so the clock controller can be enabled.
+ * "samsung,mfc-v10" is the matching mainline variant (the vendor driver uses
+ * its v10 register file for this SoC). The driver is a module loaded by hand.
+ * No IOMMU: the codec addresses physical memory, and every buffer must lie
+ * above its firmware. A dedicated, reusable 96 MiB CMA region at 0xa8000000
+ * guarantees that (the firmware is the first allocation in it). The address is
+ * free RAM in the second bank, below the vendor's own codec regions at
+ * 0xae600000.
+ */
+#include "exynos7870-j7velte-phone1.dts"
+
+&cmu_mfcmscl { status = "okay"; };
+
+/ {
+    reserved-memory {
+        mfc_mem: video-codec@a8000000 {
+            compatible = "shared-dma-pool";
+            reusable;
+            reg = <0x0 0xa8000000 0x6000000>;
+        };
+    };
+};
+
+&soc {
+    mfc: video-codec@12c30000 {
+        compatible = "samsung,mfc-v10";
+        /* second entry: the SysMMU in front of the codec, see linux-mfc-exynos7870.patch */
+        reg = <0x12c30000 0x10000>, <0x12c90000 0x1000>;
+        interrupts = <GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&cmu_mfcmscl CLK_GOUT_MFCMSCL_MFC>;
+        clock-names = "mfc";
+        memory-region = <&mfc_mem>;
+    };
+};

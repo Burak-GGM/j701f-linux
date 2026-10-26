@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. Wi-Fi tree plus battery gauge and touch keys.
+ *
+ * Fuel gauge: live vendor node "samsung,s2mu005-fuelgauge", reg 0x3b on
+ * i2c@13830000, alert on gpa0-3, capacity_full 3000 mAh. Driven by the 7.1
+ * "samsung,s2mu005-fuel-gauge" driver. There is no S2MU005 charger driver in
+ * this kernel: charging stays under whatever the chip/bootloader defaults do.
+ *
+ * Touch keys: live vendor node "coreriver,tc300-keypad" (firmware tc350k_j7ve,
+ * use_bitmap = 1) at 0x20 on i2c@13850000, interrupt gpa1-4, supply
+ * "vtouch_2.8v" switched by gpd1-6. tm2-touchkey's tc360 variant is the closest
+ * mainline driver; whether its event format matches is UNTESTED (needs a
+ * finger on the keys).
+ */
+#include "exynos7870-j7velte-wifi.dts"
+
+/ {
+    battery: battery {
+        compatible = "simple-battery";
+        device-chemistry = "lithium-ion";
+        charge-full-design-microamp-hours = <3000000>;
+    };
+
+    vdd_touchkey: regulator-touchkey {
+        compatible = "regulator-fixed";
+        regulator-name = "vtouch_2.8v";
+        regulator-min-microvolt = <2800000>;
+        regulator-max-microvolt = <2800000>;
+        gpio = <&gpd1 6 GPIO_ACTIVE_HIGH>;
+        enable-active-high;
+    };
+};
+
+&i2c0 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    samsung,i2c-sda-delay = <100>;
+    samsung,i2c-max-bus-freq = <400000>;
+    status = "okay";
+
+    fuel-gauge@3b {
+        compatible = "samsung,s2mu005-fuel-gauge";
+        reg = <0x3b>;
+        interrupt-parent = <&gpa0>;
+        interrupts = <3 IRQ_TYPE_EDGE_BOTH>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&fuel_irq>;
+        monitored-battery = <&battery>;
+    };
+};
+
+&i2c2 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    samsung,i2c-sda-delay = <100>;
+    samsung,i2c-max-bus-freq = <100000>;
+    status = "okay";
+
+    touchkey@20 {
+        compatible = "coreriver,tc360-touchkey";
+        reg = <0x20>;
+        interrupt-parent = <&gpa1>;
+        interrupts = <4 IRQ_TYPE_EDGE_FALLING>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&touchkey_irq>;
+        vcc-supply = <&vdd_touchkey>;
+        vdd-supply = <&vdd_touchkey>;
+        /* Vendor bitmap table: bit 0 recents, bit 1 back; releases in bits 4/5.
+         * Handled by kernel/patches/linux-tm2-touchkey-bitmap-events.patch. */
+        j701f,bitmap-events;
+        /* Recents is reported as KEY_PROG1 (Qt "Launch (1)"), which the session binds
+         * to the Mobile Task Switcher; Plasma has no binding for KEY_APPSELECT. */
+        linux,keycodes = <KEY_PROG1 KEY_BACK>;
+    };
+};
+
+&pinctrl_alive {
+    fuel_irq: fuel-irq-pins {
+        samsung,pins = "gpa0-3";
+        samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+        samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+    };
+
+    touchkey_irq: touchkey-irq-pins {
+        samsung,pins = "gpa1-4";
+        samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+        samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+    };
+};

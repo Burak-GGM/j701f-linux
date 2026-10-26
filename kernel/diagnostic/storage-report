@@ -1,0 +1,21 @@
+#!/bin/sh
+# Written by Claude 2026-10-08. Read-only eMMC enumeration report; mounts nothing.
+export PATH=/bin:/sbin
+mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+tries=0
+while [ ! -e /sys/class/block/mmcblk0 ] && [ "$tries" -lt 10 ]; do sleep 1; tries=$((tries + 1)); done
+echo "J701F_STORAGE_REPORT_BEGIN waited=${tries}s"
+for h in /sys/class/mmc_host/*; do
+    [ -e "$h" ] && echo "host ${h##*/}: $(ls "$h" | grep -v -E '^(device|power|subsystem|uevent)$' | head -n 4)"
+done
+for c in /sys/class/mmc_host/*/mmc*:*; do
+    [ -e "$c" ] && echo "card ${c##*/} type=$(cat "$c/type") name=$(cat "$c/name") manfid=$(cat "$c/manfid")"
+done
+[ ! -r /sys/kernel/debug/mmc0/ios ] || cat /sys/kernel/debug/mmc0/ios
+for b in /sys/class/block/mmcblk0*; do
+    [ -e "$b" ] || continue
+    name=
+    while read -r line; do case $line in PARTNAME=*) name=${line#PARTNAME=};; esac; done < "$b/uevent"
+    echo "blk ${b##*/} sectors=$(cat "$b/size") ro=$(cat "$b/ro") name=$name"
+done
+echo J701F_STORAGE_REPORT_END

@@ -1,0 +1,35 @@
+Written by Claude 2026-10-10. drivers/dma-buf/udmabuf.c of Linux 7.1.13 built as a module beside the
+kernel (CONFIG_UDMABUF is not set in the image in BOOT and libcamera's software image processing needs
+a dma-buf provider). Applied to a copy in build/kernel/udmabuf-mod.
+
+--- a/drivers/dma-buf/udmabuf.c
++++ b/udmabuf.c
+@@ -299,13 +299,14 @@
+ 	if (!shmem_file(memfd) && !is_file_hugepages(memfd))
+ 		return -EBADFD;
+ 
+-	seals = memfd_fcntl(memfd, F_GET_SEALS, 0);
+-	if (seals == -EINVAL)
+-		return -EBADFD;
+-
+-	if ((seals & SEALS_WANTED) != SEALS_WANTED ||
+-	    (seals & SEALS_DENIED) != 0)
+-		return -EINVAL;
++	/*
++	 * J701F, built out of tree as a module: memfd_fcntl() is not exported, so
++	 * the seals of the memfd (F_SEAL_SHRINK wanted, F_SEAL_WRITE denied) cannot
++	 * be checked here. The pages are pinned, so a shrinking file cannot pull
++	 * them away; the check that is lost is the policy one. The device node is
++	 * restricted to group "video" on this phone.
++	 */
++	(void)seals;
+ 
+ 	return 0;
+ }
+@@ -572,3 +573,5 @@
+ module_exit(udmabuf_dev_exit)
+ 
+ MODULE_AUTHOR("Gerd Hoffmann <kraxel@redhat.com>");
++MODULE_DESCRIPTION("userspace dmabuf driver (J701F out-of-tree build)");
++MODULE_IMPORT_NS("DMA_BUF");
++MODULE_LICENSE("GPL v2");

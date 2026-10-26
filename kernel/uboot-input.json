@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/u-boot/u-boot",
+  "ref": "v2026.01",
+  "commit": "127a42c7257a6ffbbd1575ed1cbaa8f5408a44b3",
+  "url": "https://codeload.github.com/u-boot/u-boot/tar.gz/127a42c7257a6ffbbd1575ed1cbaa8f5408a44b3",
+  "archive": "u-boot-127a42c7257a6ffbbd1575ed1cbaa8f5408a44b3.tar.gz",
+  "sha256": "74cc33ec34d48a7376771336ae5c8c3cd1ded9eb53137c7797d926660c2c0001",
+  "directory": "u-boot-127a42c7257a6ffbbd1575ed1cbaa8f5408a44b3",
+  "scope": "Source reference for a Samsung-loaded second stage; not early firmware replacement."
+}

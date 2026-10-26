@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-10. Suspend tree plus a faster path for the
+ * bootloader framebuffer: the simple-framebuffer node now names the reserved
+ * memory region instead of relying on "reg" alone.
+ *
+ * Why: with only "reg", simpledrm treats the framebuffer as I/O memory. Every
+ * frame is then converted line by line into a temporary buffer and written out
+ * with memcpy_toio(); KWin's own log showed 26.5 ms from the end of rendering
+ * to the page-flip event for a 720x1280 frame, which caps the whole desktop at
+ * about 38 frames per second. With "memory-region" simpledrm uses ordinary
+ * memory accessors and converts straight into the framebuffer.
+ * The pixel format is unchanged (the firmware's DECON window is in an ARGB
+ * mode, so the alpha byte written by the conversion is kept).
+ * Measured: 26.5 -> 23.0 ms per frame (38 -> 44 fps).
+ *
+ * Mapping the framebuffer cacheable as well was tried and gave nothing more
+ * (kernel/patches/staged/linux-simpledrm-j701f-cached-framebuffer.patch).
+ */
+#include "exynos7870-j7velte-suspend.dts"
+
+&{/chosen/framebuffer@67000000} {
+    memory-region = <&{/reserved-memory/bootloader-fb@67000000}>;
+    /* kernel/patches/linux-zz-simpledrm-j701f-software-backlight.patch:
+     * /sys/class/backlight/j701f-panel, applied while frames are copied;
+     * the connector is reported as DSI */
+    j701f,software-backlight;
+};

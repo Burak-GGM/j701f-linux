@@ -1,0 +1,49 @@
+From: Codex <codex@localhost>
+Subject: [PATCH] drm/bridge: samsung-dsim: fix PLL completion and interrupt handling
+
+The imported interrupt-based PLL wait treats a successful completion as
+failure and a timeout as success. Invert the condition to match the
+completion API. Unmask PLL_STABLE when reset releases the controller so
+the new wait can receive that event. Process all coalesced events after
+acknowledging INTSRC: returning on PLL_STABLE would discard simultaneous
+RX/FIFO events.
+
+Found in the J701F's imported 21b89c2f patch; no display hardware result
+is claimed. Host regression executes the actual wait branch and IRQ
+handler.
+---
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -865,7 +865,7 @@
+ 	reinit_completion(&dsi->pll_stabilized);
+ 	samsung_dsim_write(dsi, DSIM_PLLCTRL_REG, reg);
+ 
+-	if (wait_for_completion_timeout(&dsi->pll_stabilized,
++	if (!wait_for_completion_timeout(&dsi->pll_stabilized,
+ 					usecs_to_jiffies(timeout))) {
+ 		dev_err(dsi->dev, "PLL failed to stabilize\n");
+ 		return 0;
+@@ -1598,16 +1598,15 @@
+ 				       DSIM_INT_SFR_FIFO_EMPTY |
+ 				       DSIM_INT_SFR_HDR_FIFO_EMPTY |
+ 				       DSIM_INT_RX_ECC_ERR |
++				       DSIM_INT_PLL_STABLE |
+ 				       DSIM_INT_SW_RST_RELEASE);
+ 		samsung_dsim_write(dsi, DSIM_INTMSK_REG, mask);
+ 		complete(&dsi->completed);
+-		return IRQ_HANDLED;
+-	}
+-
+-	if (status & DSIM_INT_PLL_STABLE) {
++	}
++
++	/* INTSRC is already acknowledged: service coalesced events as well. */
++	if (status & DSIM_INT_PLL_STABLE)
+ 		complete(&dsi->pll_stabilized);
+-		return IRQ_HANDLED;
+-	}
+ 
+ 	if (!(status & (DSIM_INT_RX_DONE | DSIM_INT_SFR_FIFO_EMPTY)))
+ 		return IRQ_HANDLED;

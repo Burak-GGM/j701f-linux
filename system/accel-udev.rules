@@ -1,0 +1,7 @@
+# Written by Claude 2026-10-10. Installed as /etc/udev/rules.d/81-j701f-accel.rules.
+# The accelerometer's interrupt-driven buffer stalls on this phone, so
+# iio-sensor-proxy is told to poll it instead.
+# The orientation itself comes from the device tree's mount-matrix
+# (kernel/dts/exynos7870-j7velte-extra.dts), corrected on 2026-10-10; until the
+# BOOT image "accel1" this rule also carried that matrix as an override.
+ACTION!="remove", SUBSYSTEM=="iio", ATTR{name}=="lis2hh12", ENV{IIO_SENSOR_PROXY_TYPE}="iio-poll-accel"

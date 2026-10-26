@@ -1,0 +1,640 @@
+{
+  "capture_sha256": "04618bd4eb617ed4524ebe4de2da5a133741d00de7998698735da6e17bd31ba4",
+  "keys": {
+    "gpio_keys/button@1": {
+      "bank": "gpa0",
+      "linux_code": 116,
+      "pin": 0,
+      "vendor_flags": 15
+    },
+    "gpio_keys/button@2": {
+      "bank": "gpa2",
+      "linux_code": 114,
+      "pin": 1,
+      "vendor_flags": 15
+    },
+    "gpio_keys/button@3": {
+      "bank": "gpa2",
+      "linux_code": 115,
+      "pin": 0,
+      "vendor_flags": 15
+    },
+    "gpio_keys/button@4": {
+      "bank": "gpa1",
+      "linux_code": 172,
+      "pin": 7,
+      "vendor_flags": 15
+    }
+  },
+  "limits": [
+    "Vendor GPIO flags must be translated, not copied into mainline.",
+    "Voltage ranges do not establish board rail-to-consumer wiring.",
+    "sysfs DT capture cannot reconstruct the original FDT memreserve table.",
+    "This is measured board evidence, not proof of a mainline boot."
+  ],
+  "memory": {
+    "memory@40000000": [
+      0,
+      1073741824,
+      1044381696
+    ],
+    "memory@80000000": [
+      0,
+      2147483648,
+      1073741824
+    ]
+  },
+  "model": "Samsung J7VE LTE SEA rev02A board based on Exynos7870",
+  "nodes": {
+    "dwmmc0@13540000": {
+      "compatible": [
+        "samsung,exynos-dw-mshc"
+      ],
+      "interrupts": [
+        0,
+        245,
+        0
+      ],
+      "reg": [
+        0,
+        324272128,
+        8192
+      ]
+    },
+    "dwmmc1@13550000": {
+      "compatible": [
+        "samsung,exynos-dw-mshc"
+      ],
+      "interrupts": [
+        0,
+        246,
+        0
+      ],
+      "reg": [
+        0,
+        324337664,
+        8192
+      ]
+    },
+    "hsi2c@10510000/s2mpu05_pmic@66": {
+      "compatible": [
+        "samsung,s2mpu05-pmic"
+      ],
+      "interrupts": [
+        2,
+        0,
+        0
+      ],
+      "reg": [
+        102
+      ]
+    },
+    "i2c@13840000/mms_ts@48": {
+      "compatible": [
+        "melfas,mms_ts"
+      ],
+      "reg": [
+        72
+      ]
+    },
+    "mali@11400000": {
+      "compatible": [
+        "arm,mali"
+      ],
+      "interrupts": [
+        0,
+        282,
+        0,
+        0,
+        283,
+        0,
+        0,
+        281,
+        0
+      ],
+      "reg": [
+        0,
+        289406976,
+        20480
+      ]
+    },
+    "phy@135c0000": {
+      "compatible": [
+        "samsung,exynos7870-usbdrd-phy"
+      ],
+      "reg": [
+        0,
+        324796416,
+        256
+      ]
+    },
+    "psci": {
+      "compatible": [
+        "arm,psci"
+      ],
+      "cpu_off": [
+        2214592514
+      ],
+      "cpu_on": [
+        3288334339
+      ],
+      "cpu_suspend": [
+        3288334337
+      ],
+      "method": [
+        "smc"
+      ]
+    },
+    "uart@13820000": {
+      "compatible": [
+        "samsung,exynos-uart"
+      ],
+      "interrupts": [
+        0,
+        423,
+        0
+      ],
+      "reg": [
+        0,
+        327286784,
+        256
+      ]
+    },
+    "usb@13600000": {
+      "compatible": [
+        "samsung,exynos7870-dwusb2"
+      ],
+      "reg": [
+        0,
+        325058560,
+        65536
+      ]
+    },
+    "usb@13600000/dwc3": {
+      "compatible": [
+        "synopsys,dwc3"
+      ],
+      "interrupts": [
+        0,
+        230,
+        0
+      ],
+      "reg": [
+        0,
+        325058560,
+        65536
+      ]
+    }
+  },
+  "oscillator_hz": 26000000,
+  "regulators": {
+    "buck1": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1300000
+      ],
+      "regulator-min-microvolt": [
+        500000
+      ],
+      "regulator-name": [
+        "BUCK1"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "buck2": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1300000
+      ],
+      "regulator-min-microvolt": [
+        500000
+      ],
+      "regulator-name": [
+        "BUCK2"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "buck3": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1300000
+      ],
+      "regulator-min-microvolt": [
+        500000
+      ],
+      "regulator-name": [
+        "BUCK3"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "buck4": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1500000
+      ],
+      "regulator-min-microvolt": [
+        1200000
+      ],
+      "regulator-name": [
+        "BUCK4"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "buck5": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        2100000
+      ],
+      "regulator-min-microvolt": [
+        1800000
+      ],
+      "regulator-name": [
+        "BUCK5"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo1": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1350000
+      ],
+      "regulator-min-microvolt": [
+        650000
+      ],
+      "regulator-name": [
+        "vdd_ldo1"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo10": {
+      "regulator-always-on": [],
+      "regulator-max-microvolt": [
+        1350000
+      ],
+      "regulator-min-microvolt": [
+        650000
+      ],
+      "regulator-name": [
+        "vdd_ldo10"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo2": {
+      "regulator-max-microvolt": [
+        2800000
+      ],
+      "regulator-min-microvolt": [
+        1800000
+      ],
+      "regulator-name": [
+        "vqmmc"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo25": {
+      "regulator-max-microvolt": [
+        2375000
+      ],
+      "regulator-min-microvolt": [
+        800000
+      ],
+      "regulator-name": [
+        "vdd_ldo25"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo26": {
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        3375000
+      ],
+      "regulator-min-microvolt": [
+        1800000
+      ],
+      "regulator-name": [
+        "vemmc"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo27": {
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        2375000
+      ],
+      "regulator-min-microvolt": [
+        800000
+      ],
+      "regulator-name": [
+        "vqemmc"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo29": {
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        3000000
+      ],
+      "regulator-min-microvolt": [
+        3000000
+      ],
+      "regulator-name": [
+        "LCD_3P0"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo3": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        2375000
+      ],
+      "regulator-min-microvolt": [
+        800000
+      ],
+      "regulator-name": [
+        "vdd_ldo3"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo30": {
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1800000
+      ],
+      "regulator-min-microvolt": [
+        1800000
+      ],
+      "regulator-name": [
+        "LCD_1P8"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo31": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        2800000
+      ],
+      "regulator-min-microvolt": [
+        2800000
+      ],
+      "regulator-name": [
+        "vdd_ldo31"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo32": {
+      "regulator-max-microvolt": [
+        3300000
+      ],
+      "regulator-min-microvolt": [
+        3300000
+      ],
+      "regulator-name": [
+        "VDD_MOTOR_3.3"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo33": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        3300000
+      ],
+      "regulator-min-microvolt": [
+        3300000
+      ],
+      "regulator-name": [
+        "vdd_sensor_3p3"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo34": {
+      "regulator-max-microvolt": [
+        3300000
+      ],
+      "regulator-min-microvolt": [
+        3300000
+      ],
+      "regulator-name": [
+        "tsp_dvdd"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo35": {
+      "regulator-max-microvolt": [
+        2800000
+      ],
+      "regulator-min-microvolt": [
+        2800000
+      ],
+      "regulator-name": [
+        "VDD_CAM_SENSOR_A2P8"
+      ]
+    },
+    "ldo4": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1350000
+      ],
+      "regulator-min-microvolt": [
+        800000
+      ],
+      "regulator-name": [
+        "vdd_ldo4"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo5": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1350000
+      ],
+      "regulator-min-microvolt": [
+        800000
+      ],
+      "regulator-name": [
+        "vdd_ldo5"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo6": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        1350000
+      ],
+      "regulator-min-microvolt": [
+        800000
+      ],
+      "regulator-name": [
+        "vdd_ldo6"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo7": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        2375000
+      ],
+      "regulator-min-microvolt": [
+        800000
+      ],
+      "regulator-name": [
+        "vdd_ldo7"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo8": {
+      "regulator-always-on": [],
+      "regulator-boot-on": [],
+      "regulator-max-microvolt": [
+        3375000
+      ],
+      "regulator-min-microvolt": [
+        1800000
+      ],
+      "regulator-name": [
+        "vdd_ldo8"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    },
+    "ldo9": {
+      "regulator-always-on": [],
+      "regulator-max-microvolt": [
+        1350000
+      ],
+      "regulator-min-microvolt": [
+        650000
+      ],
+      "regulator-name": [
+        "vdd_ldo9"
+      ],
+      "regulator-ramp-delay": [
+        12000
+      ]
+    }
+  },
+  "reservations": {
+    "bootloader_fb": [
+      0,
+      1728053248,
+      10485760
+    ],
+    "crypto": [
+      0,
+      2147483648,
+      8388608
+    ],
+    "dram_init": [
+      0,
+      2952785920,
+      4096
+    ],
+    "gnss_if": [
+      0,
+      3082813440,
+      4194304
+    ],
+    "mfc_fw": [
+      0,
+      2927624192,
+      2097152
+    ],
+    "mfc_nfw": [
+      0,
+      2925527040,
+      2097152
+    ],
+    "modem_if": [
+      0,
+      2952790016,
+      125829120
+    ],
+    "tima_region@0x52A00000": [
+      0,
+      1386217472,
+      2097152
+    ],
+    "video_frame": [
+      0,
+      2185232384,
+      88080384
+    ],
+    "video_fw": [
+      0,
+      2155872256,
+      4194304
+    ],
+    "video_nfw": [
+      0,
+      2160066560,
+      4194304
+    ],
+    "video_scaler": [
+      0,
+      2273312768,
+      29360128
+    ],
+    "video_stream": [
+      0,
+      2164260864,
+      20971520
+    ]
+  }
+}

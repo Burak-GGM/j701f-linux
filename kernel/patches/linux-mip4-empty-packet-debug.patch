@@ -1,0 +1,22 @@
+From: Claude <noreply@anthropic.com>
+Subject: Input: melfas_mip4 - do not log empty packets as errors (J701F local)
+
+Written by Claude 2026-10-08 for the J701F project; not an upstream patch.
+The MMS438 on this phone keeps its attention line low for a short time after
+a packet is read. With the level-low trigger the vendor driver also uses, the
+handler re-enters and reads a zero-length packet, which the driver reported
+with dev_err thousands of times and pushed the boot log out of the ring
+buffer. An edge trigger avoids the message but loses interrupts for good once
+the line stays low (measured: one interrupt after boot, touch dead).
+---
+--- a/drivers/input/touchscreen/melfas_mip4.c
++++ b/drivers/input/touchscreen/melfas_mip4.c
+@@ -605,7 +605,7 @@
+ 
+ 	/* Check size */
+ 	if (!size) {
+-		dev_err(&client->dev, "Empty packet\n");
++		dev_dbg(&client->dev, "Empty packet\n");
+ 		goto out;
+ 	}
+ 

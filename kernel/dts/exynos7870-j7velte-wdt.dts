@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. Thermal tree plus the SoC watchdog, so that a
+ * hung kernel resets itself while nobody is near the phone (prerequisite for
+ * trying CPU frequency changes remotely). Live vendor node: "samsung,exynos7-wdt"
+ * at 0x10170000, SPI 100, PMU syscon; the vendor driver's exynos7 data (PMU
+ * offsets 0x404/0x408/0x40c, mask bit 23) equals mainline's drv_data_exynos7.
+ * The clock is the PERI gate named for the CPUCL0 watchdog; that this is the
+ * instance at 0x10170000 is an assumption. The driver does not start the
+ * timer by itself; userspace must open /dev/watchdog.
+ */
+#include "exynos7870-j7velte-thermal.dts"
+
+&soc {
+    watchdog@10170000 {
+        compatible = "samsung,exynos7-wdt";
+        reg = <0x10170000 0x100>;
+        interrupts = <GIC_SPI 100 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&cmu_peri CLK_GOUT_PERI_WDT_CPUCL0_PCLK>;
+        clock-names = "watchdog";
+        samsung,syscon-phandle = <&pmu_system_controller>;
+        timeout-sec = <30>;
+    };
+};

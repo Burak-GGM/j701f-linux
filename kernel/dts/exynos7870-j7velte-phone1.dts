@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. eMMC-DDR52 tree plus two "phone feature"
+ * items that only need device-tree nodes. PREPARED WITHOUT THE PHONE: built
+ * and verified on the host, not yet booted.
+ *
+ * Vibration motor: the vendor "sec_vib" node drives it by switching the
+ * regulator VDD_MOTOR_3.3 (PMIC LDO32) on and off, which is exactly what the
+ * mainline regulator-haptic driver does.
+ *
+ * microSD slot (mmc2): pins, the gpc0-0 controlled 2.8 V supply, LDO2 as the
+ * I/O supply and card detect on gpa0-1 are the same as on the mainline
+ * Galaxy J6 board and match this phone's live vendor tree. Unlike that board
+ * no UHS modes are enabled here: plain high speed first.
+ *
+ * Proximity sensor: Capella CM36672P at 0x60 on i2c8 (0x138e0000), interrupt
+ * on gpa0-5, supply always on in the vendor tree. Mainline's vcnl4000 IIO
+ * driver has this chip ("capella,cm36672p").
+ */
+#include "exynos7870-j7velte-emmchs.dts"
+
+/ {
+    vibrator {
+        compatible = "regulator-haptic";
+        haptic-supply = <&vdd_ldo32>;
+        min-microvolt = <3300000>;
+        max-microvolt = <3300000>;
+    };
+
+    vdd_fixed_mmc2: regulator-fixed-mmc2 {
+        compatible = "regulator-fixed";
+        regulator-name = "vdd_fixed_mmc2";
+        regulator-min-microvolt = <2800000>;
+        regulator-max-microvolt = <2800000>;
+        gpio = <&gpc0 0 GPIO_ACTIVE_HIGH>;
+        enable-active-high;
+    };
+};
+
+&pinctrl_alive {
+    dwmmc2_irq: dwmmc2-irq-pins {
+        samsung,pins = "gpa0-1";
+        samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+        samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+    };
+};
+
+&mmc2 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&sd2_clk &sd2_cmd &sd2_bus1 &sd2_bus4 &dwmmc2_irq>;
+    vmmc-supply = <&vdd_fixed_mmc2>;
+    vqmmc-supply = <&vdd_ldo2>;
+    bus-width = <4>;
+    cap-sd-highspeed;
+    cd-gpios = <&gpa0 1 GPIO_ACTIVE_LOW>;
+    card-detect-delay = <200>;
+    fifo-depth = <64>;
+    samsung,dw-mshc-ciu-div = <3>;
+    samsung,dw-mshc-sdr-timing = <0 3>;
+    samsung,dw-mshc-ddr-timing = <1 2>;
+    disable-wp;
+    status = "okay";
+};
+
+&i2c8 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    samsung,i2c-sda-delay = <100>;
+    samsung,i2c-max-bus-freq = <400000>;
+    status = "okay";
+
+    proximity@60 {
+        compatible = "capella,cm36672p";
+        reg = <0x60>;
+        interrupt-parent = <&gpa0>;
+        interrupts = <5 IRQ_TYPE_EDGE_FALLING>;
+        proximity-near-level = <15>;   /* vendor default_low_thd */
+    };
+};

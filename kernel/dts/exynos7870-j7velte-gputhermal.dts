@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. GPU frequency scaling tree plus the GPU as a
+ * second cooling device on the 70 C passive trip: Panfrost registers a devfreq
+ * cooling device when its node has #cooling-cells, and the thermal core then
+ * steps the GPU frequency down together with the CPU frequency.
+ */
+#include "exynos7870-j7velte-gpufreq.dts"
+
+&gpu {
+    #cooling-cells = <2>;
+};
+
+/ {
+    thermal-zones {
+        soc-thermal {
+            cooling-maps {
+                map0 {
+                    cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+                                     <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+                };
+            };
+        };
+    };
+};

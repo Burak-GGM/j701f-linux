@@ -1,0 +1,19 @@
+#!/bin/sh
+# Written by Claude 2026-10-08. RAM replacement for Alpine's /bin/usb-debug when
+# the system runs on the mainline kernel. The configfs gadget (ACM + NCM) is
+# already bound by the initramfs; this only brings up USB networking and
+# supervises the same serial root shell the vendor-kernel boot provides.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+say() { printf 'USB: %s\n' "$*"; }
+ip link set usb0 up 2>/dev/null && ip addr replace 172.16.42.1/24 dev usb0 &&
+    say 'usb0 172.16.42.1/24 (host side: 172.16.42.2/24)'
+n=0
+while [ ! -c /dev/ttyGS0 ] && [ "$n" -lt 30 ]; do sleep 1; n=$((n + 1)); done
+[ -c /dev/ttyGS0 ] || { say 'No ttyGS0 from the mainline gadget'; sleep 10; exit 1; }
+printf 'ttyGS0\n' > /tmp/usb-console-tty
+say 'Starting shell on ttyGS0 (mainline configfs gadget)'
+while :; do
+    setsid getty -L -n -w -l /bin/usb-shell 0 ttyGS0 vt100
+    say 'Serial session ended; restarting'
+    sleep 1
+done

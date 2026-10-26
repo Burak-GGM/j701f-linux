@@ -1,0 +1,72 @@
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -34,6 +34,7 @@
+ 	int (*const match)(struct exynos_board_info *);
+ 	const char *match_model;
+ 	const u8 match_max_rev;
++	const u8 match_min_rev;
+ };
+ 
+ /*
+@@ -93,6 +94,7 @@
+ {
+ 	const char *prev_bl_bootargs;
+ 	int val, ret;
++	unsigned long revision;
+ 
+ 	prev_bl_bootargs = exynos_prev_bl_get_bootargs();
+ 	if (!prev_bl_bootargs)
+@@ -130,7 +132,8 @@
+ 		return -1;
+ 	}
+ 
+-	if (strtoul(prev_bl_bootargs + val, NULL, 10) > board_info->match_max_rev)
++	revision = strtoul(prev_bl_bootargs + val, NULL, 10);
++	if (revision < board_info->match_min_rev || revision > board_info->match_max_rev)
+ 		return -1;
+ 
+ 	/*
+@@ -170,6 +173,15 @@
+ 		.match_model = "J600",
+ 		.match_max_rev = U8_MAX,
+ 	}, {
++		/* Samsung Galaxy J7 Core / J7 Nxt: measured SM-J701F rev03 only. */
++		.name = "j7velte",
++		.chip = "exynos7870",
++		.dram_bank_bases = exynos7870_common_dram_bank_bases,
++		.match = exynos7870_fdt_match,
++		.match_model = "J701F",
++		.match_min_rev = 3,
++		.match_max_rev = 3,
++	}, {
+ 		/* Samsung Galaxy J7 Prime */
+ 		.name = "on7xelte",
+ 		.chip = "exynos7870",
+@@ -223,6 +235,7 @@
+ 	}
+ }
+ 
++#ifdef CONFIG_USB_FUNCTION_FASTBOOT
+ static int exynos_fastboot_setup(void)
+ {
+ 	struct blk_desc *blk_dev;
+@@ -270,6 +283,8 @@
+ 	return 0;
+ }
+ 
++#endif /* CONFIG_USB_FUNCTION_FASTBOOT */
++
+ int board_fit_config_name_match(const char *name)
+ {
+ 	struct exynos_board_info *board_info;
+@@ -399,5 +414,9 @@
+ 		 board_info->name);
+ 	env_set("fdtfile", buf);
+ 
++#ifdef CONFIG_USB_FUNCTION_FASTBOOT
+ 	return exynos_fastboot_setup();
+-}
++#else
++	return 0;
++#endif
++}

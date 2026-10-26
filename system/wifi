@@ -1,0 +1,81 @@
+#!/bin/sh
+# Supervised by BusyBox init; credentials are provisioned separately on DATA.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+config=/etc/wpa_supplicant/wlan0.conf
+logdir=/run/j701f-wifi
+while [ ! -s "$config" ] || ! command -v wpa_supplicant >/dev/null 2>&1; do
+    sleep 60
+done
+mkdir -p "$logdir" /run/wpa_supplicant
+chmod 700 "$logdir" /run/wpa_supplicant
+
+# Claude 2026-10-10: on the mainline kernel, when /etc/j701f-wifi-nm exists,
+# NetworkManager owns wlan0 so that the desktop can see and manage Wi-Fi. The
+# saved network is /etc/NetworkManager/system-connections/j701f-home.nmconnection.
+# If NetworkManager has not obtained an address after 90 seconds it is stopped
+# and the original path below runs for this boot. The vendor 3.18 kernel always
+# uses the original path (boot updates depend on it).
+if [ -e /etc/j701f-wifi-nm ] && [ "$(uname -r)" != 3.18.140-SIMPLE-KERNEL_V1.0 ] \
+        && command -v NetworkManager >/dev/null 2>&1; then
+    ip link set lo up
+    rc-service networkmanager start > "$logdir/nm.log" 2>&1
+    n=0
+    while [ $n -lt 45 ] && ! ip -4 addr show dev wlan0 | grep -q 'inet '; do
+        sleep 2; n=$((n + 1))
+    done
+    if ip -4 addr show dev wlan0 | grep -q 'inet '; then
+        # The hardware clock is written after every successful time fetch: the
+        # kernel sets the system clock from it at boot, so without this the
+        # phone started every boot in the year 2000 until Wi-Fi came up
+        # (and stayed there without Wi-Fi). Found 2026-10-13.
+        ( busybox ntpd -n -q -p 0.pool.ntp.org -p time.cloudflare.com &&
+          hwclock -w -u ) > "$logdir/time.log" 2>&1 &
+        while rc-service networkmanager status >/dev/null 2>&1; do sleep 30; done
+        sleep 5
+        exit 1
+    fi
+    echo "NetworkManager got no address in 90 s; falling back" >> "$logdir/nm.log"
+    rc-service networkmanager stop >> "$logdir/nm.log" 2>&1
+    sleep 2
+fi
+wpa_pid=''; dhcp_pid=''; ntp_pid=''
+cleanup() {
+    for child in $dhcp_pid $wpa_pid $ntp_pid; do kill "$child" 2>/dev/null; done
+    for child in $dhcp_pid $wpa_pid $ntp_pid; do wait "$child" 2>/dev/null; done
+}
+trap cleanup EXIT
+trap 'exit 0' INT TERM
+ip link set lo up
+ip link set wlan0 up || { sleep 15; exit 1; }
+wpa_supplicant -D nl80211 -i wlan0 -c "$config" > "$logdir/association.log" 2>&1 &
+wpa_pid=$!
+while kill -0 "$wpa_pid" 2>/dev/null; do
+    if wpa_cli -i wlan0 status 2>/dev/null | grep -qx 'wpa_state=COMPLETED'; then
+        break
+    fi
+    sleep 2
+done
+kill -0 "$wpa_pid" 2>/dev/null || { sleep 15; exit 1; }
+udhcpc -f -i wlan0 -p "$logdir/dhcp.pid" -s /sbin/j701f-wifi-dhcp \
+    -t 5 -T 3 -A 10 > "$logdir/dhcp.log" 2>&1 &
+dhcp_pid=$!
+# The old kernel boots with an incorrect clock; NTP allows HTTPS validation.
+start_ntp() {
+    busybox ntpd -n -p 0.pool.ntp.org -p time.cloudflare.com \
+        > "$logdir/time.log" 2>&1 &
+    ntp_pid=$!
+}
+while kill -0 "$wpa_pid" 2>/dev/null && kill -0 "$dhcp_pid" 2>/dev/null; do
+    if ip -4 addr show dev wlan0 | grep -q 'inet '; then
+        if [ -z "$ntp_pid" ]; then
+            start_ntp
+        elif ! kill -0 "$ntp_pid" 2>/dev/null; then
+            wait "$ntp_pid" 2>/dev/null
+            start_ntp
+        fi
+    fi
+    sleep 5
+done
+sleep 5
+exit 1

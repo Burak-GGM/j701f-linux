@@ -1,0 +1,67 @@
+#!/bin/sh
+# Configure only the legacy Android gadget, then supervise one USB serial shell.
+export PATH=/bin
+. /etc/usb-baseline.conf
+g=/sys/class/android_usb/android0
+say() { printf 'USB: %s\n' "$*"; }
+put() {
+    [ -e "$1" ] || { say "Missing attribute: $1"; return 1; }
+    printf '%s\n' "$2" > "$1"
+}
+
+n=0
+while [ ! -e "$g/enable" ] && [ "$n" -lt 30 ]; do sleep 1; n=$((n+1)); done
+[ -e "$g/enable" ] || { say 'Android gadget did not appear'; exit 1; }
+
+# Inspect the function sysfs directory; both spellings occur in Samsung trees.
+function=''
+for candidate in acm acm0; do
+    if [ -e "$g/f_$candidate/instances" ]; then function=$candidate; break; fi
+done
+[ -n "$function" ] || { say 'No ACM function with instances attribute'; exit 1; }
+put "$g/enable" 0 || exit 1
+put "$g/idVendor" "$USB_VENDOR" || exit 1
+put "$g/idProduct" "$USB_PRODUCT" || exit 1
+# Per-interface class: the ACM interfaces provide their own CDC descriptors.
+put "$g/bDeviceClass" 0 || exit 1
+put "$g/bDeviceSubClass" 0 || exit 1
+put "$g/bDeviceProtocol" 0 || exit 1
+put "$g/iSerial" J701F-LINUX-CONSOLE || exit 1
+put "$g/f_$function/instances" 1 || exit 1
+put "$g/functions" "$function" || exit 1
+# This driver's store method can report success even for an unknown function.
+actual=$(cat "$g/functions")
+[ "$actual" = "$function" ] || { say "Function rejected: $actual"; exit 1; }
+put "$g/enable" 1 || exit 1
+[ "$(cat "$g/enable")" = 1 ] || { say 'Gadget did not enable'; exit 1; }
+say "Enabled $function with baseline VID:PID $USB_VENDOR:$USB_PRODUCT"
+
+n=0
+tty=''
+while [ "$n" -lt 30 ]; do
+    for node in /sys/class/tty/ttyGS*; do
+        [ -r "$node/dev" ] || continue
+        name=${node##*/}
+        # Device numbers come from live sysfs, never a guessed major/minor.
+        if [ ! -c "/dev/$name" ]; then
+            dev=$(cat "$node/dev")
+            major=${dev%:*}; minor=${dev#*:}
+            case "$major:$minor" in *[!0-9:]*|:*) continue ;; esac
+            mknod -m 600 "/dev/$name" c "$major" "$minor" || continue
+        fi
+        tty=$name
+        break
+    done
+    [ -z "$tty" ] || break
+    sleep 1; n=$((n+1))
+done
+[ -n "$tty" ] || { say 'No ttyGS device appeared'; exit 1; }
+printf '%s\n' "$tty" > /tmp/usb-console-tty
+say "Starting shell on $tty; host should expose /dev/ttyACM*"
+while :; do
+    # -w waits for Enter: host is attached before the banner is written.
+    # getty establishes the controlling terminal; baud 0 retains driver defaults.
+    setsid getty -L -n -w -l /bin/usb-shell 0 "$tty" vt100
+    say 'Serial session ended; restarting'
+    sleep 1
+done

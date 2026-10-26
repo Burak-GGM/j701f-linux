@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. CPU-frequency tree plus Bluetooth and the
+ * accelerometer.
+ *
+ * Bluetooth: the BCM43438 combo chip's UART side. Live vendor node
+ * "broadcom,bcm43xx" uses gpd4-0 (enable), gpa1-2 (device wake) and gpa1-6
+ * (host wake): the same pins as the pinned tree's j6lte, whose serial1
+ * bluetooth node is copied here without its pinctrl states. No BCM43430A1.hcd
+ * patch file is available on the build host, so the controller runs its ROM
+ * firmware.
+ *
+ * Accelerometer: live vendor node "k2hh-i2c" (ST K2HH = LIS2HH12) at 0x1d on
+ * i2c@138d0000, interrupt gpa2-3, vio on LDO3. The mount matrix is translated
+ * from the vendor axis_map/negate properties and is NOT verified against the
+ * physical orientation.
+ */
+#include "exynos7870-j7velte-cpufreq.dts"
+
+&serial1 {
+    status = "okay";
+
+    bluetooth {
+        compatible = "brcm,bcm43430a1-bt";
+        device-wakeup-gpios = <&gpa1 2 GPIO_ACTIVE_HIGH>;
+        host-wakeup-gpios = <&gpa1 6 GPIO_ACTIVE_HIGH>;
+        shutdown-gpios = <&gpd4 0 GPIO_ACTIVE_HIGH>;
+        max-speed = <3000000>;
+    };
+};
+
+&i2c7 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    samsung,i2c-sda-delay = <100>;
+    samsung,i2c-max-bus-freq = <400000>;
+    status = "okay";
+
+    accelerometer@1d {
+        compatible = "st,lis2hh12";
+        reg = <0x1d>;
+        interrupt-parent = <&gpa2>;
+        interrupts = <3 IRQ_TYPE_EDGE_RISING>;
+        vdd-supply = <&vdd_ldo33>;
+        vddio-supply = <&vdd_ldo3>;
+        st,drdy-int-pin = <1>;
+        /* Claude 2026-10-10: was "0","1","0", "-1","0","0", "0","0","-1" - a
+         * mirror; the screen rotated the wrong way. This matrix is the one
+         * the owner confirmed on the phone (first as a udev override,
+         * system/accel-udev.rules). */
+        mount-matrix = "0", "-1", "0",
+                       "1", "0", "0",
+                       "0", "0", "-1";
+    };
+};

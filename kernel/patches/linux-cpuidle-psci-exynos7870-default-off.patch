@@ -1,0 +1,29 @@
+From: Claude <noreply@anthropic.com>
+Subject: cpuidle: psci: register Exynos 7870 deep states switched off (J701F local)
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+The PSCI core power-down state added by exynos7870-j7velte-cpuidle.dts is
+untested firmware territory. With CPUIDLE_FLAG_OFF a boot never enters it; a
+core is opted in at run time through sysfs, so a hang cannot become a boot loop.
+---
+--- a/drivers/cpuidle/cpuidle-psci.c
++++ b/drivers/cpuidle/cpuidle-psci.c
+@@ -409,6 +409,18 @@
+ 		return ret;
+ 	}
+ 
++	/*
++	 * J701F local: on Exynos 7870 the deep states are an experiment. Register
++	 * them switched off; they are enabled per core through
++	 * /sys/devices/system/cpu/cpuN/cpuidle/stateM/disable.
++	 */
++	if (of_machine_is_compatible("samsung,exynos7870")) {
++		int i;
++
++		for (i = 1; i < drv->state_count; i++)
++			drv->states[i].flags |= CPUIDLE_FLAG_OFF;
++	}
++
+ 	ret = cpuidle_register(drv, NULL);
+ 	if (ret)
+ 		goto deinit;

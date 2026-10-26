@@ -1,0 +1,253 @@
+From: Claude <noreply@anthropic.com>
+Subject: drm/simpledrm: software backlight for the J701F bootloader framebuffer
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+Applies on top of linux-sysfb-j701f-fast-argb-copy.patch. With the boolean
+device-tree property "j701f,software-backlight" simpledrm registers the
+backlight device "j701f-panel" (0-255) and reports its connector as DSI. The
+level is applied to every pixel while the frame is copied to the framebuffer,
+and a level change copies the current frame out again.
+---
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_helper.h
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_helper.h
+@@ -80,6 +80,13 @@
+ 
+ 	/* hardware-framebuffer kernel address */
+ 	struct iosys_map fb_addr;
++
++	/*
++	 * J701F local: software backlight. When sw_backlight is set, the copy
++	 * into the framebuffer scales every pixel by sw_backlight_level / 255.
++	 */
++	bool sw_backlight;
++	unsigned int sw_backlight_level;
+ };
+ 
+ static inline struct drm_sysfb_device *to_drm_sysfb_device(struct drm_device *dev)
+@@ -122,6 +129,8 @@
+ #define DRM_SYSFB_PLANE_NFORMATS(_num_native) \
+ 	((_num_native) + 1)
+ 
++void drm_sysfb_plane_redraw(struct drm_plane *plane);
++
+ #define DRM_SYSFB_PLANE_FORMAT_MODIFIERS \
+ 	DRM_FORMAT_MOD_LINEAR, \
+ 	DRM_FORMAT_MOD_INVALID
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
+@@ -239,6 +239,64 @@
+ 	drm_fb_xrgb8888_to_argb8888(dst, dst_pitch, src, fb, clip, state);
+ }
+ 
++/*
++ * J701F local: software backlight. The panel has no brightness control in this
++ * kernel yet, and a compositor that darkens the picture itself needs an extra
++ * rendering pass (42 -> 20 frames per second here). simpledrm registers a
++ * backlight device instead; its level is applied here, per pixel, while the
++ * frame is copied anyway.
++ */
++static bool drm_sysfb_dimmed(struct drm_sysfb_device *sysfb, const struct drm_format_info *dst_format,
++			     const struct drm_framebuffer *fb, unsigned int *level)
++{
++	if (!sysfb->sw_backlight || sysfb->fb_addr.is_iomem)
++		return false;
++	*level = min(READ_ONCE(sysfb->sw_backlight_level), 255u);
++	if (*level == 255 || fb->format->format != DRM_FORMAT_XRGB8888)
++		return false;
++	return dst_format->format == DRM_FORMAT_ARGB8888 || dst_format->format == DRM_FORMAT_XRGB8888;
++}
++
++/*
++ * XRGB8888 to ARGB8888/XRGB8888 scaled by @level / 255; @clip is in framebuffer
++ * coordinates. Two pixels per 64-bit word: red and blue of both pixels are
++ * multiplied in one operation, green in a second one (each 8-bit field has 8
++ * spare bits above it, and the factor is at most 256). Stored as whole words,
++ * because single 32-bit stores into the uncached framebuffer are slow and a
++ * table lookup per channel cost 10 ms per frame.
++ */
++static void drm_sysfb_blit_dimmed(void *dst, unsigned int dst_pitch, const void *src,
++				  const struct drm_framebuffer *fb, const struct drm_rect *clip,
++				  unsigned int level)
++{
++	unsigned int width = drm_rect_width(clip), height = drm_rect_height(clip);
++	u64 f = level + (level >> 7);	/* 0..255 -> 0..256 */
++	unsigned int x, y;
++
++	src += clip->y1 * fb->pitches[0] + clip->x1 * sizeof(u32);
++	for (y = 0; y < height; y++) {
++		const u32 *s = src;
++		u32 *d = dst;
++
++		for (x = 0; x + 1 < width; x += 2) {
++			u64 v = get_unaligned((const u64 *)(s + x));
++			u64 rb = (((v & 0x00ff00ff00ff00ffULL) * f) >> 8) & 0x00ff00ff00ff00ffULL;
++			u64 g = ((((v >> 8) & 0x000000ff000000ffULL) * f) & 0x0000ff000000ff00ULL);
++
++			put_unaligned(rb | g | 0xff000000ff000000ULL, (u64 *)(d + x));
++		}
++		if (x < width) {
++			u32 p = s[x];
++			u32 rb = (((p & 0x00ff00ff) * (u32)f) >> 8) & 0x00ff00ff;
++			u32 g = (((p >> 8) & 0xff) * (u32)f) & 0x0000ff00;
++
++			d[x] = rb | g | 0xff000000;
++		}
++		src += fb->pitches[0];
++		dst += dst_pitch;
++	}
++}
++
+ static drm_sysfb_blit_func drm_sysfb_get_blit_func(u32 dst_format, u32 src_format)
+ {
+ 	if (src_format == dst_format) {
+@@ -383,8 +441,12 @@
+ 	drm_sysfb_blit_func blit_to_crtc = sysfb_plane_state->blit_to_crtc;
+ 	struct drm_atomic_helper_damage_iter iter;
+ 	struct drm_rect damage;
++	unsigned int level;
++	bool dimmed;
+ 	int ret, idx;
+ 
++	dimmed = drm_sysfb_dimmed(sysfb, dst_format, fb, &level);
++
+ 	ret = drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE);
+ 	if (ret)
+ 		return;
+@@ -401,8 +463,12 @@
+ 			continue;
+ 
+ 		iosys_map_incr(&dst, drm_fb_clip_offset(dst_pitch, dst_format, &dst_clip));
+-		blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &damage,
+-			     &shadow_plane_state->fmtcnv_state);
++		if (dimmed)
++			drm_sysfb_blit_dimmed(dst.vaddr, dst_pitch, shadow_plane_state->data[0].vaddr,
++					      fb, &dst_clip, level);
++		else
++			blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &damage,
++				     &shadow_plane_state->fmtcnv_state);
+ 	}
+ 
+ 	drm_dev_exit(idx);
+@@ -411,6 +477,56 @@
+ }
+ EXPORT_SYMBOL(drm_sysfb_plane_helper_atomic_update);
+ 
++/**
++ * drm_sysfb_plane_redraw - copy the plane's current framebuffer out again
++ * @plane: the primary plane
++ *
++ * J701F local: called when the software backlight level changes, because the
++ * level is baked into the pixels and nothing else would repaint a still picture.
++ */
++void drm_sysfb_plane_redraw(struct drm_plane *plane)
++{
++	struct drm_device *dev = plane->dev;
++	struct drm_sysfb_device *sysfb = to_drm_sysfb_device(dev);
++	struct drm_format_conv_state fmtcnv = DRM_FORMAT_CONV_STATE_INIT;
++	struct iosys_map map[DRM_FORMAT_MAX_PLANES], data[DRM_FORMAT_MAX_PLANES];
++	struct drm_modeset_acquire_ctx ctx;
++	struct drm_plane_state *plane_state;
++	struct drm_framebuffer *fb;
++	int ret, idx;
++
++	DRM_MODESET_LOCK_ALL_BEGIN(dev, ctx, 0, ret);
++	plane_state = plane->state;
++	fb = plane_state ? plane_state->fb : NULL;
++	if (fb && plane_state->visible && plane_state->crtc && drm_dev_enter(dev, &idx)) {
++		struct drm_sysfb_plane_state *sysfb_plane_state = to_drm_sysfb_plane_state(plane_state);
++		const struct drm_format_info *dst_format =
++			to_drm_sysfb_crtc_state(plane_state->crtc->state)->format;
++		unsigned int dst_pitch = sysfb->fb_pitch;
++		struct iosys_map dst = sysfb->fb_addr;
++		struct drm_rect full = plane_state->dst;
++		unsigned int level;
++
++		if (!drm_gem_fb_vmap(fb, map, data)) {
++			if (!drm_gem_fb_begin_cpu_access(fb, DMA_FROM_DEVICE)) {
++				iosys_map_incr(&dst, drm_fb_clip_offset(dst_pitch, dst_format, &full));
++				if (drm_sysfb_dimmed(sysfb, dst_format, fb, &level))
++					drm_sysfb_blit_dimmed(dst.vaddr, dst_pitch, data[0].vaddr,
++							      fb, &full, level);
++				else if (sysfb_plane_state->blit_to_crtc)
++					sysfb_plane_state->blit_to_crtc(&dst, &dst_pitch, data, fb,
++									&full, &fmtcnv);
++				drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
++			}
++			drm_gem_fb_vunmap(fb, map);
++		}
++		drm_dev_exit(idx);
++	}
++	DRM_MODESET_LOCK_ALL_END(dev, ctx, ret);
++	drm_format_conv_state_release(&fmtcnv);
++}
++EXPORT_SYMBOL(drm_sysfb_plane_redraw);
++
+ void drm_sysfb_plane_helper_atomic_disable(struct drm_plane *plane,
+ 					   struct drm_atomic_state *state)
+ {
+--- a/drivers/gpu/drm/sysfb/simpledrm.c
++++ b/drivers/gpu/drm/sysfb/simpledrm.c
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ 
+ #include <linux/aperture.h>
++#include <linux/backlight.h>
+ #include <linux/clk.h>
+ #include <linux/minmax.h>
+ #include <linux/of_address.h>
+@@ -560,6 +561,25 @@
+ 	.destroy = drm_plane_cleanup,
+ };
+ 
++/*
++ * J701F local: software backlight, see drm_sysfb_modeset.c. Enabled by the
++ * boolean device-tree property "j701f,software-backlight"; the connector is
++ * then also reported as DSI, which it is, so that the desktop treats the
++ * output as the built-in panel and uses this device for its brightness.
++ */
++static int simpledrm_backlight_update(struct backlight_device *bl)
++{
++	struct simpledrm_device *sdev = bl_get_data(bl);
++
++	WRITE_ONCE(sdev->sysfb.sw_backlight_level, backlight_get_brightness(bl));
++	drm_sysfb_plane_redraw(&sdev->primary_plane);
++	return 0;
++}
++
++static const struct backlight_ops simpledrm_backlight_ops = {
++	.update_status = simpledrm_backlight_update,
++};
++
+ static const struct drm_crtc_helper_funcs simpledrm_crtc_helper_funcs = {
+ 	DRM_SYSFB_CRTC_HELPER_FUNCS,
+ };
+@@ -795,8 +815,28 @@
+ 	/* Connector */
+ 
+ 	connector = &sdev->connector;
++	if (pdev->dev.of_node && !sysfb->fb_addr.is_iomem &&
++	    of_property_read_bool(pdev->dev.of_node, "j701f,software-backlight") &&
++	    (format->format == DRM_FORMAT_ARGB8888 || format->format == DRM_FORMAT_XRGB8888)) {
++		struct backlight_properties props = {
++			.type = BACKLIGHT_RAW,
++			.max_brightness = 255,
++			.brightness = 255,
++		};
++		struct backlight_device *bl;
++
++		sysfb->sw_backlight_level = 255;
++		bl = devm_backlight_device_register(&pdev->dev, "j701f-panel", &pdev->dev, sdev,
++						    &simpledrm_backlight_ops, &props);
++		if (!IS_ERR(bl)) {
++			sysfb->sw_backlight = true;
++			drm_info(dev, "software backlight registered (J701F local)\n");
++		}
++	}
++
+ 	ret = drm_connector_init(dev, connector, &simpledrm_connector_funcs,
+-				 DRM_MODE_CONNECTOR_Unknown);
++				 sysfb->sw_backlight ? DRM_MODE_CONNECTOR_DSI :
++						       DRM_MODE_CONNECTOR_Unknown);
+ 	if (ret)
+ 		return ERR_PTR(ret);
+ 	drm_connector_helper_add(connector, &simpledrm_connector_helper_funcs);

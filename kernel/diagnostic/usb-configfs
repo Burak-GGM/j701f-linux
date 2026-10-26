@@ -1,0 +1,56 @@
+#!/bin/sh
+# Uses its own configfs gadget. Never unbinds somebody else's USB function.
+set -eu
+export PATH=/bin:/sbin
+. /etc/usb-baseline.conf
+mkdir -p /sys/kernel/config
+mount -t configfs configfs /sys/kernel/config
+base=/sys/kernel/config/usb_gadget
+test -d "$base"
+for other in "$base"/*; do
+    [ ! -e "$other" ] || { echo 'Existing gadget found; refusing to replace it'; exit 1; }
+done
+g=$base/j701f_diagnostic
+mkdir "$g"
+printf '0x%s\n' "$USB_VENDOR" > "$g/idVendor"
+printf '0x%s\n' "$USB_PRODUCT" > "$g/idProduct"
+mkdir "$g/strings/0x409"
+printf 'j701f-diagnostic\n' > "$g/strings/0x409/serialnumber"
+printf 'Burak Linux\n' > "$g/strings/0x409/manufacturer"
+printf 'J701F mainline RAM diagnostic\n' > "$g/strings/0x409/product"
+mkdir "$g/configs/c.1"
+mkdir "$g/configs/c.1/strings/0x409"
+printf 'USB serial console\n' > "$g/configs/c.1/strings/0x409/configuration"
+printf '100\n' > "$g/configs/c.1/MaxPower"
+mkdir "$g/functions/acm.usb0"
+ln -s "$g/functions/acm.usb0" "$g/configs/c.1/acm.usb0"
+# Claude 2026-10-08: USB networking beside the console, with fixed local MACs
+# so the host interface can be found. Skipped if the kernel lacks NCM.
+if mkdir "$g/functions/ncm.usb0" 2>/dev/null; then
+    printf '02:70:1f:00:00:01\n' > "$g/functions/ncm.usb0/dev_addr"
+    printf '02:70:1f:00:00:02\n' > "$g/functions/ncm.usb0/host_addr"
+    ln -s "$g/functions/ncm.usb0" "$g/configs/c.1/ncm.usb0"
+fi
+tries=0
+while [ "$tries" -lt 60 ]; do
+    count=0
+    udc=
+    for entry in /sys/class/udc/*; do
+        [ -e "$entry" ] || continue
+        count=$((count + 1))
+        udc=${entry##*/}
+    done
+    if [ "$count" -eq 1 ]; then
+        printf '%s\n' "$udc" > "$g/UDC"
+        echo "Bound diagnostic ACM to $udc"
+        ip link set usb0 up 2>/dev/null && ip addr add 172.16.42.1/24 dev usb0 2>/dev/null &&
+            echo 'usb0 172.16.42.1/24'
+        printf 'J701F_CONFIGFS_ACM_READY\n' > /run/usb-ready
+        exit 0
+    fi
+    [ "$count" -le 1 ] || { echo 'Ambiguous USB device controllers'; exit 1; }
+    sleep 1
+    tries=$((tries + 1))
+done
+echo 'No UDC appeared within 60 seconds'
+exit 1

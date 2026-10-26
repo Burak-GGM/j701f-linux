@@ -1,0 +1,182 @@
+From: Claude <noreply@anthropic.com>
+Subject: drm/sysfb: software gamma LUT for the J701F bootloader framebuffer
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+Without backlight control KWin implements brightness (and idle dimming) in an
+extra GPU pass: 42 -> 20 frames per second on this phone. With the boolean
+device-tree property "j701f,software-gamma" simpledrm advertises a 256-entry
+GAMMA_LUT; the plane update then applies the LUT while converting XRGB8888 to
+the framebuffer format, and a LUT change redraws the whole plane.
+The LUT is ignored until /sys/module/drm_sysfb_helper/parameters/j701f_software_gamma
+is set to 1.
+
+NOT USED (staged only). Tested on the phone 2026-10-10 as image "fbmem4": the
+LUT is advertised and the code runs, but KWin 6.6 does not put its brightness
+into the CRTC gamma LUT; it kept its own rendering pass (framebuffer darker and
+20 fps with the LUT ignored or applied alike). The copy loop here could serve
+a kernel-side software backlight device instead; see docs/next-goals.md.
+---
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
+@@ -18,6 +18,72 @@
+ 
+ #include "drm_sysfb_helper.h"
+ 
++/*
++ * J701F local: software gamma. The phone has no backlight control yet, and
++ * without a GAMMA_LUT on the CRTC the compositor darkens every frame in an
++ * extra GPU pass that halves its frame rate. With a 256-entry LUT advertised
++ * (simpledrm, device-tree property "j701f,software-gamma") the compositor
++ * hands the curve to the kernel, and the copy into the framebuffer applies it
++ * per pixel. It is off until
++ * /sys/module/drm_sysfb_helper/parameters/j701f_software_gamma is set to 1
++ * (system/tune does that at boot); while off, the LUT is accepted and ignored.
++ */
++static bool j701f_software_gamma;
++module_param(j701f_software_gamma, bool, 0644);
++MODULE_PARM_DESC(j701f_software_gamma, "Apply the CRTC gamma LUT while copying to the framebuffer");
++
++static const struct drm_color_lut *
++drm_sysfb_software_lut(struct drm_sysfb_device *sysfb, const struct drm_crtc_state *crtc_state,
++		       const struct drm_format_info *dst_format, const struct drm_framebuffer *fb)
++{
++	const struct drm_property_blob *blob = crtc_state->gamma_lut;
++	const struct drm_color_lut *lut;
++	unsigned int i;
++
++	if (!j701f_software_gamma || sysfb->fb_gamma_lut_size != 256 || !blob ||
++	    blob->length != 256 * sizeof(struct drm_color_lut) || sysfb->fb_addr.is_iomem)
++		return NULL;
++	if (fb->format->format != DRM_FORMAT_XRGB8888 ||
++	    (dst_format->format != DRM_FORMAT_ARGB8888 && dst_format->format != DRM_FORMAT_XRGB8888))
++		return NULL;
++	lut = blob->data;
++	for (i = 0; i < 256; i++) {
++		if ((lut[i].red >> 8) != i || (lut[i].green >> 8) != i || (lut[i].blue >> 8) != i)
++			return lut;
++	}
++	return NULL;	/* identity: the ordinary conversion is faster */
++}
++
++/* XRGB8888 to ARGB8888/XRGB8888 through the LUT; @clip is in framebuffer coordinates. */
++static void drm_sysfb_blit_lut(void *dst, unsigned int dst_pitch, const void *src,
++			       const struct drm_framebuffer *fb, const struct drm_rect *clip,
++			       const struct drm_color_lut *lut)
++{
++	unsigned int width = drm_rect_width(clip), height = drm_rect_height(clip);
++	u8 r[256], g[256], b[256];
++	unsigned int x, y;
++
++	for (x = 0; x < 256; x++) {
++		r[x] = lut[x].red >> 8;
++		g[x] = lut[x].green >> 8;
++		b[x] = lut[x].blue >> 8;
++	}
++	src += clip->y1 * fb->pitches[0] + clip->x1 * sizeof(u32);
++	for (y = 0; y < height; y++) {
++		const __le32 *s = src;
++		__le32 *d = dst;
++
++		for (x = 0; x < width; x++) {
++			u32 p = le32_to_cpu(s[x]);
++
++			d[x] = cpu_to_le32(0xff000000 | r[(p >> 16) & 0xff] << 16 |
++					   g[(p >> 8) & 0xff] << 8 | b[p & 0xff]);
++		}
++		src += fb->pitches[0];
++		dst += dst_pitch;
++	}
++}
++
+ struct drm_display_mode drm_sysfb_mode(unsigned int width,
+ 				       unsigned int height,
+ 				       unsigned int width_mm,
+@@ -341,6 +407,7 @@
+ 	const struct drm_format_info *dst_format = sysfb_crtc_state->format;
+ 	drm_sysfb_blit_func blit_to_crtc = sysfb_plane_state->blit_to_crtc;
+ 	struct drm_atomic_helper_damage_iter iter;
++	const struct drm_color_lut *lut;
+ 	struct drm_rect damage;
+ 	int ret, idx;
+ 
+@@ -351,6 +418,23 @@
+ 	if (!drm_dev_enter(dev, &idx))
+ 		goto out_drm_gem_fb_end_cpu_access;
+ 
++	lut = drm_sysfb_software_lut(sysfb, crtc_state, dst_format, fb);
++	if (sysfb->fb_gamma_lut_size == 256 && crtc_state->color_mgmt_changed &&
++	    !sysfb->fb_addr.is_iomem) {
++		/* J701F local: a new curve applies to the whole picture, not only to the damage. */
++		struct iosys_map dst = sysfb->fb_addr;
++		struct drm_rect full = plane_state->dst;
++
++		iosys_map_incr(&dst, drm_fb_clip_offset(dst_pitch, dst_format, &full));
++		if (lut)
++			drm_sysfb_blit_lut(dst.vaddr, dst_pitch, shadow_plane_state->data[0].vaddr,
++					   fb, &full, lut);
++		else
++			blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &full,
++				     &shadow_plane_state->fmtcnv_state);
++		goto out_drm_dev_exit;
++	}
++
+ 	drm_atomic_helper_damage_iter_init(&iter, old_plane_state, plane_state);
+ 	drm_atomic_for_each_plane_damage(&iter, &damage) {
+ 		struct iosys_map dst = sysfb->fb_addr;
+@@ -360,10 +444,15 @@
+ 			continue;
+ 
+ 		iosys_map_incr(&dst, drm_fb_clip_offset(dst_pitch, dst_format, &dst_clip));
+-		blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &damage,
+-			     &shadow_plane_state->fmtcnv_state);
++		if (lut)
++			drm_sysfb_blit_lut(dst.vaddr, dst_pitch, shadow_plane_state->data[0].vaddr,
++					   fb, &dst_clip, lut);
++		else
++			blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &damage,
++				     &shadow_plane_state->fmtcnv_state);
+ 	}
+ 
++out_drm_dev_exit:
+ 	drm_dev_exit(idx);
+ out_drm_gem_fb_end_cpu_access:
+ 	drm_gem_fb_end_cpu_access(fb, DMA_FROM_DEVICE);
+@@ -509,6 +598,13 @@
+ 			drm_dbg(dev, "Incorrect gamma_lut length %zu\n", gamma_lut->length);
+ 			return -EINVAL;
+ 		}
++
++		/* J701F local: the software LUT is applied by the plane update. */
++		if (sysfb->fb_gamma_lut_size == 256 && !sysfb->fb_addr.is_iomem) {
++			ret = drm_atomic_add_affected_planes(new_state, crtc);
++			if (ret)
++				return ret;
++		}
+ 	}
+ 
+ 	return 0;
+--- a/drivers/gpu/drm/sysfb/simpledrm.c
++++ b/drivers/gpu/drm/sysfb/simpledrm.c
+@@ -783,6 +783,22 @@
+ 		return ERR_PTR(ret);
+ 	drm_crtc_helper_add(crtc, &simpledrm_crtc_helper_funcs);
+ 
++	/*
++	 * J701F local: advertise a gamma LUT that the framebuffer copy applies
++	 * in software (drm_sysfb_modeset.c). Only for a RAM framebuffer in a
++	 * 32-bit format, and only when the device tree asks for it.
++	 */
++	if (pdev->dev.of_node && !sysfb->fb_addr.is_iomem &&
++	    of_property_read_bool(pdev->dev.of_node, "j701f,software-gamma") &&
++	    (format->format == DRM_FORMAT_ARGB8888 || format->format == DRM_FORMAT_XRGB8888)) {
++		ret = drm_mode_crtc_set_gamma_size(crtc, 256);
++		if (!ret) {
++			sysfb->fb_gamma_lut_size = 256;
++			drm_crtc_enable_color_mgmt(crtc, 0, false, 256);
++			drm_info(dev, "software gamma LUT enabled (J701F local)\n");
++		}
++	}
++
+ 	/* Encoder */
+ 
+ 	encoder = &sdev->encoder;

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Written by Claude 2026-10-09. Loads the hardware video codec (Samsung MFC)
+# modules by hand; they are deliberately not in /lib/modules.
+# Usage: sudo sh ~/j701f/modules/mfc/load.sh   -> /dev/video0 (decoder), /dev/video1 (encoder)
+cd "$(dirname "$0")" || exit 1
+for m in mc videodev videobuf2-common videobuf2-v4l2 videobuf2-memops videobuf2-dma-contig s5p-mfc; do
+    sync
+    insmod "$m.ko" 2>/dev/null || grep -q "^$(echo "$m" | tr - _) " /proc/modules || { echo "insmod $m failed"; exit 1; }
+done
+ls -l /dev/video0 /dev/video1

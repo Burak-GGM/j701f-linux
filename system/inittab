@@ -1,0 +1,17 @@
+# Phone-specific BusyBox init. No virtual-console gettys.
+::sysinit:/sbin/j701f-start
+# Claude 2026-10-08: OpenRC runlevels, mainline kernel only (the wrapper is a
+# no-op on 3.18). "once" keeps the default runlevel from delaying the entries below.
+::sysinit:/sbin/j701f-openrc sysinit
+::sysinit:/sbin/j701f-openrc boot
+::once:/sbin/j701f-openrc default
+# Claude 2026-10-09: fall back to 3.18 if a mainline boot gets no Wi-Fi (remote safety).
+::once:/sbin/j701f-netguard
+# Claude 2026-10-08: terminal on 3.18, graphical session on mainline.
+::respawn:/sbin/j701f-display
+::respawn:/bin/usb-debug
+::respawn:/sbin/j701f-wifi
+::respawn:/sbin/j701f-sshd
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/j701f-openrc shutdown
+::shutdown:/bin/busybox sync

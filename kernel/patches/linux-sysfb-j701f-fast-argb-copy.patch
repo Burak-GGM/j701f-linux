@@ -1,0 +1,74 @@
+From: Claude <noreply@anthropic.com>
+Subject: drm/sysfb: faster XRGB8888 to ARGB8888 copy for a RAM framebuffer (J701F local)
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+The per-frame copy into the bootloader framebuffer limits the compositor's
+frame rate on this phone. Only used when neither side is I/O memory, i.e. with
+"memory-region" on the simple-framebuffer node.
+---
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
+@@ -2,6 +2,7 @@
+ 
+ #include <linux/export.h>
+ #include <linux/slab.h>
++#include <linux/unaligned.h>
+ 
+ #include <drm/drm_atomic.h>
+ #include <drm/drm_atomic_helper.h>
+@@ -198,6 +199,46 @@
+ 	drm_fb_memcpy(dst, dst_pitch, src, fb, clip);
+ }
+ 
++/*
++ * J701F local: XRGB8888 to ARGB8888 for a framebuffer in ordinary memory. The
++ * generic helper copies every line into a temporary buffer and then converts it
++ * pixel by pixel; on this phone that is 8 ms of a 23 ms frame. Here two pixels
++ * are converted per 64-bit word, straight from the source into the framebuffer.
++ */
++static void drm_sysfb_xrgb8888_to_argb8888_fast(struct iosys_map *dst, const unsigned int *dst_pitch,
++						const struct iosys_map *src,
++						const struct drm_framebuffer *fb,
++						const struct drm_rect *clip,
++						struct drm_format_conv_state *state)
++{
++#ifdef __LITTLE_ENDIAN
++	unsigned int width = drm_rect_width(clip), height = drm_rect_height(clip);
++	unsigned int pitch = (dst_pitch && dst_pitch[0]) ? dst_pitch[0] : width * sizeof(u32);
++	const void *s;
++	void *d;
++	unsigned int x, y;
++
++	if (!dst[0].is_iomem && !src[0].is_iomem) {
++		s = src[0].vaddr + clip->y1 * fb->pitches[0] + clip->x1 * sizeof(u32);
++		d = dst[0].vaddr;
++		for (y = 0; y < height; y++) {
++			const u32 *sl = s;
++			u32 *dl = d;
++
++			for (x = 0; x + 1 < width; x += 2)
++				put_unaligned(get_unaligned((const u64 *)(sl + x)) |
++					      0xff000000ff000000ULL, (u64 *)(dl + x));
++			if (x < width)
++				dl[x] = sl[x] | 0xff000000;
++			s += fb->pitches[0];
++			d += pitch;
++		}
++		return;
++	}
++#endif
++	drm_fb_xrgb8888_to_argb8888(dst, dst_pitch, src, fb, clip, state);
++}
++
+ static drm_sysfb_blit_func drm_sysfb_get_blit_func(u32 dst_format, u32 src_format)
+ {
+ 	if (src_format == dst_format) {
+@@ -219,7 +260,7 @@
+ 		case DRM_FORMAT_BGR888:
+ 			return drm_fb_xrgb8888_to_bgr888;
+ 		case DRM_FORMAT_ARGB8888:
+-			return drm_fb_xrgb8888_to_argb8888;
++			return drm_sysfb_xrgb8888_to_argb8888_fast;
+ 		case DRM_FORMAT_XBGR8888:
+ 			return drm_fb_xrgb8888_to_xbgr8888;
+ 		case DRM_FORMAT_ABGR8888:

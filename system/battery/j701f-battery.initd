@@ -1,0 +1,11 @@
+#!/sbin/openrc-run
+# Written by Claude 2026-10-13. To be installed as /etc/init.d/j701f-battery.
+# See system/battery/j701f-battery.
+description="J701F: battery gauge mode switch and charge current by temperature"
+command=/usr/local/sbin/j701f-battery
+command_background=true
+pidfile=/run/j701f-battery.pid
+depend() {
+    need localmount
+    after modules
+}

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Written by Claude 2026-10-09. Installed as /etc/local.d/j701f-gpufreq.start.
+# Mainline boots with the GPU pinned at the bootloader's 343 MHz (see
+# kernel/patches/linux-g3d-exynos7870-scaling.patch) and the CPU capped at
+# 1352 MHz (cpufreq driver default). This raises both limits once the system is
+# up: GPU to 1001 MHz, CPU to 1586 MHz. A stamp file guards against a reset loop: if the phone reset
+# while a raise was still "pending", the next boot leaves the GPU at 343 MHz
+# (and the CPU at 1352 MHz); the boot after that tries again.
+P=/sys/module/clk_exynos7870_g3d_park/parameters/max_khz
+S=/var/lib/j701f-gpufreq.pending
+KHZ=1001000
+C=/sys/module/exynos7870_cpufreq/parameters/max_khz
+CPU_KHZ=1586000
+[ -w "$P" ] || exit 0
+# Claude 2026-10-10: the stamp used to stay until someone removed it by hand.
+# It was then found left behind by an ordinary, intended reboot into the
+# recovery 40-220 s after boot - and the phone ran with the GPU at 343 MHz and
+# the CPU capped for a whole session, unnoticed (the application drawer at 20-30
+# frames per second instead of 55-60). Now the stamp costs exactly one boot: it
+# is removed here, this boot stays slow, the next one tries the raise again.
+# A real reset loop is still broken, every second boot being a calm one.
+[ -e "$S" ] && { rm -f "$S"; sync; echo "j701f-gpufreq: previous raise did not survive; staying at 343 MHz for this boot only" >/dev/kmsg; exit 0; }
+(
+    sleep 40
+    : >"$S"; sync
+    echo "$KHZ" >"$P"
+    [ -w "$C" ] && echo "$CPU_KHZ" >"$C"
+    sleep 180
+    rm -f "$S"; sync
+) >/dev/null 2>&1 &

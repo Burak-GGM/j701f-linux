@@ -1,0 +1,101 @@
+From: Claude <noreply@anthropic.com>
+Subject: media: s5p-mfc: make the v10 variant work on Exynos7870 (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+1. The v10 variant names no clock; give it "mfc".
+2. The SysMMU in front of the codec resets to enabled+blocked; switch it to
+   bypass before the codec's processor is released (found by reading its
+   CTRL/STATUS registers: 0x3 / 0x1; with CTRL = 0 the firmware starts).
+3. Honour a "memory-region" on the codec node for the common-memory case, so
+   that all buffers lie above the firmware base (fixes decoding below 720p).
+---
+--- a/drivers/media/platform/samsung/s5p-mfc/s5p_mfc.c
++++ b/drivers/media/platform/samsung/s5p-mfc/s5p_mfc.c
+@@ -1226,6 +1226,16 @@
+ 	if (mfc_mem_size)
+ 		mem_size = memparse(mfc_mem_size, NULL);
+ 
++	/*
++	 * J701F local: without an IOMMU every buffer address handed to the
++	 * codec must lie above the firmware base. With the global CMA area the
++	 * small stream buffers of low-resolution videos landed below it and the
++	 * codec answered with error 0x37. A dedicated "memory-region" makes the
++	 * preallocation below the first, lowest allocation of that region.
++	 */
++	if (of_reserved_mem_device_init(dev) == 0)
++		dev_info(dev, "using the dedicated memory region\n");
++
+ 	mfc_dev->mem_bitmap = bitmap_zalloc(mem_size >> PAGE_SHIFT, GFP_KERNEL);
+ 	if (!mfc_dev->mem_bitmap)
+ 		return -ENOMEM;
+@@ -1274,6 +1284,7 @@
+ 			  mfc_dev->mem_base);
+ 	bitmap_free(mfc_dev->mem_bitmap);
+ 	vb2_dma_contig_clear_max_seg_size(dev);
++	of_reserved_mem_device_release(dev);
+ }
+ 
+ static int s5p_mfc_configure_dma_memory(struct s5p_mfc_dev *mfc_dev)
+@@ -1678,6 +1689,9 @@
+ 	.port_num       = MFC_NUM_PORTS_V10,
+ 	.buf_size       = &buf_size_v10,
+ 	.fw_name[0]     = "s5p-mfc-v10.fw",
++	/* J701F local: upstream's v10 entry names no clock, so nothing would ungate the block */
++	.clk_names	= {"mfc"},
++	.num_clocks	= 1,
+ };
+ 
+ static struct s5p_mfc_buf_size_v6 mfc_buf_size_v12 = {
+--- a/drivers/media/platform/samsung/s5p-mfc/s5p_mfc_ctrl.c
++++ b/drivers/media/platform/samsung/s5p-mfc/s5p_mfc_ctrl.c
+@@ -6,6 +6,8 @@
+  *		http://www.samsung.com/
+  */
+ 
++#include <linux/io.h>
++#include <linux/of_address.h>
+ #include <linux/delay.h>
+ #include <linux/err.h>
+ #include <linux/firmware.h>
+@@ -207,6 +209,32 @@
+ 	}
+ }
+ 
++
++/*
++ * J701F local. On the Exynos7870 the codec's bus master sits behind a SysMMU
++ * that comes out of reset enabled and blocked (CTRL = 0x3, no page table), so
++ * the codec cannot fetch its firmware and never answers. Until that SysMMU is
++ * driven properly, put it into bypass. Its registers are the optional second
++ * "reg" entry of the codec node.
++ */
++static void s5p_mfc_sysmmu_bypass(struct s5p_mfc_dev *dev)
++{
++	struct resource res;
++	void __iomem *mmu;
++
++	if (of_address_to_resource(dev->plat_dev->dev.of_node, 1, &res))
++		return;
++	mmu = ioremap(res.start, resource_size(&res));
++	if (!mmu)
++		return;
++	if (readl(mmu)) {
++		dev_info(&dev->plat_dev->dev, "SysMMU control %#x, switching to bypass\n",
++			 readl(mmu));
++		writel(0, mmu);
++	}
++	iounmap(mmu);
++}
++
+ /* Initialize hardware */
+ int s5p_mfc_init_hw(struct s5p_mfc_dev *dev)
+ {
+@@ -233,6 +261,8 @@
+ 	s5p_mfc_init_memctrl(dev);
+ 	/* 2. Initialize registers of channel I/F */
+ 	s5p_mfc_clear_cmds(dev);
++	s5p_mfc_sysmmu_bypass(dev);
++
+ 	/* 3. Release reset signal to the RISC */
+ 	s5p_mfc_clean_dev_int_flags(dev);
+ 	if (IS_MFCV6_PLUS(dev)) {

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Written by Claude 2026-10-08. Installed as /sbin/j701f-display and respawned
+# from /etc/inittab in place of /bin/display-status. On the vendor 3.18 kernel
+# (fallback in RECOVERY) it runs the framebuffer terminal as before. On mainline
+# the display belongs to the graphical session (sddm -> Plasma Mobile), so it
+# stays idle unless /etc/j701f-mainline-terminal exists (touch that file and
+# reboot to get the framebuffer terminal back on mainline).
+case "$(uname -r)" in
+3.18.*) exec /bin/display-status ;;
+esac
+[ ! -e /etc/j701f-mainline-terminal ] || exec /bin/display-status
+exec sleep 86400

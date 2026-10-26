@@ -1,0 +1,134 @@
+From: Claude <noreply@anthropic.com>
+Subject: drm/panfrost: runtime control of shrinker purging (J701F local)
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+Mitigation for black browser tiles under memory pressure: QtWebEngine imports
+dma-bufs of buffers whose exporting context has already marked them purgeable
+(WARN in panfrost_gem_open()), and the shrinker could purge them.
+shrinker_purge: 0 never purge, 1 upstream behaviour (default), 2 skip buffers
+that another client or a dma-buf still refers to and make a buffer needed
+again when a second client opens it. Mode 0 pins every buffer in Mesa's cache
+(measured: 220 MB in one client, allocation failures at session start), so
+mode 2 is the one meant for daily use.
+---
+--- a/drivers/gpu/drm/panfrost/panfrost_gem_shrinker.c
++++ b/drivers/gpu/drm/panfrost/panfrost_gem_shrinker.c
+@@ -6,6 +6,7 @@
+  * Author: Rob Clark <robdclark@gmail.com>
+  */
+ 
++#include <linux/moduleparam.h>
+ #include <linux/list.h>
+ 
+ #include <drm/drm_device.h>
+@@ -15,6 +16,34 @@
+ #include "panfrost_gem.h"
+ #include "panfrost_mmu.h"
+ 
++/*
++ * J701F local: runtime control of purging. Mesa marks the buffers in its cache
++ * as purgeable; on this phone, under memory reclaim, purged buffers were later
++ * opened by another GPU context (WARN in panfrost_gem_open(), black tiles in
++ * the browser).
++ * /sys/module/panfrost/parameters/shrinker_purge
++ *   0: never purge (every cached buffer stays pinned: costs a lot of memory)
++ *   1: upstream behaviour (default)
++ *   2: purge only buffers that no other client or dma-buf still refers to
++ *      and take a buffer out of the purgeable state when a second client
++ *      opens it (panfrost_gem_open())
++ */
++int panfrost_shrinker_purge = 1;
++module_param_named(shrinker_purge, panfrost_shrinker_purge, int, 0644);
++MODULE_PARM_DESC(shrinker_purge, "0=never purge, 1=purge all purgeable (default), 2=skip shared buffers");
++
++static bool panfrost_gem_shrinker_wants(struct drm_gem_shmem_object *shmem)
++{
++	struct drm_gem_object *obj = &shmem->base;
++
++	if (!drm_gem_shmem_is_purgeable(shmem))
++		return false;
++	if (panfrost_shrinker_purge == 2 &&
++	    (READ_ONCE(obj->handle_count) > 1 || READ_ONCE(obj->dma_buf)))
++		return false;
++	return true;
++}
++
+ static unsigned long
+ panfrost_gem_shrinker_count(struct shrinker *shrinker, struct shrink_control *sc)
+ {
+@@ -22,11 +51,14 @@
+ 	struct drm_gem_shmem_object *shmem;
+ 	unsigned long count = 0;
+ 
++	if (!panfrost_shrinker_purge)
++		return 0;
++
+ 	if (!mutex_trylock(&pfdev->shrinker_lock))
+ 		return 0;
+ 
+ 	list_for_each_entry(shmem, &pfdev->shrinker_list, madv_list) {
+-		if (drm_gem_shmem_is_purgeable(shmem))
++		if (panfrost_gem_shrinker_wants(shmem))
+ 			count += shmem->base.size >> PAGE_SHIFT;
+ 	}
+ 
+@@ -74,7 +106,7 @@
+ 	list_for_each_entry_safe(shmem, tmp, &pfdev->shrinker_list, madv_list) {
+ 		if (freed >= sc->nr_to_scan)
+ 			break;
+-		if (drm_gem_shmem_is_purgeable(shmem) &&
++		if (panfrost_gem_shrinker_wants(shmem) &&
+ 		    panfrost_gem_purge(&shmem->base)) {
+ 			freed += shmem->base.size >> PAGE_SHIFT;
+ 			list_del_init(&shmem->madv_list);
+--- a/drivers/gpu/drm/panfrost/panfrost_gem.c
++++ b/drivers/gpu/drm/panfrost/panfrost_gem.c
+@@ -209,10 +209,34 @@
+ 			goto err;
+ 	}
+ 
+-	mutex_lock(&bo->mappings.lock);
+-	WARN_ON(bo->base.madv != PANFROST_MADV_WILLNEED);
+-	list_add_tail(&mapping->node, &bo->mappings.list);
+-	mutex_unlock(&bo->mappings.lock);
++	if (panfrost_shrinker_purge == 2) {
++		/*
++		 * J701F local: QtWebEngine imports dma-bufs of buffers that the
++		 * exporting context has already marked purgeable. A second user
++		 * means the contents are needed: take the buffer off the
++		 * shrinker list (same lock order as the madvise ioctl).
++		 */
++		struct panfrost_device *pfdev = to_panfrost_device(obj->dev);
++
++		dma_resv_lock(obj->resv, NULL);
++		mutex_lock(&pfdev->shrinker_lock);
++		mutex_lock(&bo->mappings.lock);
++		if (bo->base.madv > 0) {
++			bo->base.madv = PANFROST_MADV_WILLNEED;
++			list_del_init(&bo->base.madv_list);
++		} else if (bo->base.madv < 0) {
++			pr_warn_ratelimited("panfrost: purged buffer opened by a second client\n");
++		}
++		list_add_tail(&mapping->node, &bo->mappings.list);
++		mutex_unlock(&bo->mappings.lock);
++		mutex_unlock(&pfdev->shrinker_lock);
++		dma_resv_unlock(obj->resv);
++	} else {
++		mutex_lock(&bo->mappings.lock);
++		WARN_ON(bo->base.madv != PANFROST_MADV_WILLNEED);
++		list_add_tail(&mapping->node, &bo->mappings.list);
++		mutex_unlock(&bo->mappings.lock);
++	}
+ 
+ err:
+ 	if (ret)
+--- a/drivers/gpu/drm/panfrost/panfrost_gem.h
++++ b/drivers/gpu/drm/panfrost/panfrost_gem.h
+@@ -154,6 +154,7 @@
+ void panfrost_gem_mapping_put(struct panfrost_gem_mapping *mapping);
+ void panfrost_gem_teardown_mappings_locked(struct panfrost_gem_object *bo);
+ 
++extern int panfrost_shrinker_purge; /* J701F local, panfrost_gem_shrinker.c */
+ int panfrost_gem_shrinker_init(struct drm_device *dev);
+ void panfrost_gem_shrinker_cleanup(struct drm_device *dev);
+ 

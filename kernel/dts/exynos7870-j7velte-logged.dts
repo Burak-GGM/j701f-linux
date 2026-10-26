@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: GPL-2.0-only
+#include "exynos7870-j7velte-diagnostic.dts"
+
+/ {
+    chosen {
+        /* Without ranges the kernel cannot translate the framebuffer reg,
+         * and without console=tty0 the kernel log never reaches fbcon.
+         * tty0 is last so /dev/console (used by /init) is the screen. */
+        #address-cells = <2>;
+        #size-cells = <1>;
+        ranges;
+        bootargs = "rdinit=/init console=ttySAC2,115200n8 console=tty0 loglevel=8 ignore_loglevel clk_ignore_unused regulator_ignore_unused panic=10";
+
+        /* Reuse the firmware's measured scanout; no panel/clock programming. */
+        framebuffer@67000000 {
+            compatible = "simple-framebuffer";
+            reg = <0 0x67000000 0x384000>;
+            width = <720>;
+            height = <1280>;
+            stride = <2880>;
+            format = "a8r8g8b8";
+            status = "okay";
+        };
+    };
+
+    /* The existing 10 MiB bootloader-fb reservation covers this RAM too.
+     * Last 1 MiB is beyond both measured 720x1280x32 scanout buffers.
+     * Survival across a firmware/vendor reboot must be measured, not assumed.
+     * A root platform node avoids overlapping reserved-memory declarations. */
+    ramoops@67900000 {
+        compatible = "ramoops";
+        reg = <0 0x67900000 0x100000>;
+        record-size = <0x20000>;
+        console-size = <0x80000>;
+        pmsg-size = <0x40000>;
+        ecc-size = <0>;
+    };
+};

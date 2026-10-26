@@ -1,0 +1,73 @@
+From 91c98c6b0e2bbb50d97ee843a07918b9cc473a30 Mon Sep 17 00:00:00 2001
+From: Kaustabh Chakraborty <kauschluss@disroot.org>
+Date: Wed, 15 Apr 2026 20:32:08 +0530
+Subject: [PATCH] FROMLIST: mmc: dw_mmc: implement option for configuring DMA
+ threshold
+
+Some controllers, such as certain Exynos SDIO ones, are unable to
+perform DMA transfers of small amount of bytes properly. Following the
+device tree schema, implement the property to define the DMA transfer
+threshold (from a hard coded value of 16 bytes) so that lesser number of
+bytes can be transferred safely skipping DMA in such controllers. The
+value of 16 bytes stays as the default for controllers which do not
+define it. This value can be overridden by implementation-specific init
+sequences.
+
+Signed-off-by: Kaustabh Chakraborty <kauschluss@disroot.org>
+---
+ drivers/mmc/host/dw_mmc.c | 4 ++--
+ drivers/mmc/host/dw_mmc.h | 2 ++
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/mmc/host/dw_mmc.c b/drivers/mmc/host/dw_mmc.c
+index 20193ee7b73e..3b4157f34d11 100644
+--- a/drivers/mmc/host/dw_mmc.c
++++ b/drivers/mmc/host/dw_mmc.c
+@@ -40,7 +40,6 @@
+ 				 SDMMC_INT_RESP_ERR | SDMMC_INT_HLE)
+ #define DW_MCI_ERROR_FLAGS	(DW_MCI_DATA_ERROR_FLAGS | \
+ 				 DW_MCI_CMD_ERROR_FLAGS)
+-#define DW_MCI_DMA_THRESHOLD	16
+ 
+ #define DW_MCI_FREQ_MAX	200000000	/* unit: HZ */
+ #define DW_MCI_FREQ_MIN	100000		/* unit: HZ */
+@@ -821,7 +820,7 @@ static int dw_mci_pre_dma_transfer(struct dw_mci *host,
+ 	 * non-word-aligned buffers or lengths. Also, we don't bother
+ 	 * with all the DMA setup overhead for short transfers.
+ 	 */
+-	if (data->blocks * data->blksz < DW_MCI_DMA_THRESHOLD)
++	if (data->blocks * data->blksz < host->dma_threshold)
+ 		return -EINVAL;
+ 
+ 	if (data->blksz & 3)
+@@ -3185,6 +3184,7 @@ struct dw_mci *dw_mci_alloc_host(struct device *dev)
+ 	host = mmc_priv(mmc);
+ 	host->mmc = mmc;
+ 	host->dev = dev;
++	host->dma_threshold = 16;
+ 
+ 	return host;
+ }
+diff --git a/drivers/mmc/host/dw_mmc.h b/drivers/mmc/host/dw_mmc.h
+index 42e58be74ce0..f29d40158dc5 100644
+--- a/drivers/mmc/host/dw_mmc.h
++++ b/drivers/mmc/host/dw_mmc.h
+@@ -107,6 +107,7 @@ struct dw_mci_dma_slave {
+  * @ciu_clk: Pointer to card interface unit clock instance.
+  * @fifo_depth: depth of FIFO.
+  * @data_addr_override: override fifo reg offset with this value.
++ * @dma_threshold: data threshold value in bytes to carry out a DMA transfer.
+  * @wm_aligned: force fifo watermark equal with data length in PIO mode.
+  *	Set as true if alignment is needed.
+  * @data_shift: log2 of FIFO item size.
+@@ -163,6 +164,7 @@ struct dw_mci {
+ 	void __iomem		*regs;
+ 	void __iomem		*fifo_reg;
+ 	u32			data_addr_override;
++	u32			dma_threshold;
+ 	bool			wm_aligned;
+ 
+ 	struct scatterlist	*sg;
+-- 
+GitLab
+

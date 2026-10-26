@@ -1,0 +1,68 @@
+From: Claude <noreply@anthropic.com>
+Subject: Input: melfas_mip4 - optional vdd supply with boot delay (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+Applies on top of linux-mip4-empty-packet-debug.patch.
+---
+--- a/drivers/input/touchscreen/melfas_mip4.c
++++ b/drivers/input/touchscreen/melfas_mip4.c
+@@ -17,6 +17,7 @@
+ #include <linux/interrupt.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/regulator/consumer.h>
+ #include <linux/slab.h>
+ #include <linux/unaligned.h>
+ 
+@@ -148,6 +149,7 @@
+ 	struct i2c_client *client;
+ 	struct input_dev *input;
+ 	struct gpio_desc *gpio_ce;
++	struct regulator *vdd;
+ 
+ 	char phys[32];
+ 	char product_name[16];
+@@ -1421,6 +1423,11 @@
+ };
+ ATTRIBUTE_GROUPS(mip4);
+ 
++static void mip4_disable_vdd(void *data)
++{
++	regulator_disable(data);
++}
++
+ static int mip4_probe(struct i2c_client *client)
+ {
+ 	struct mip4_ts *ts;
+@@ -1451,6 +1458,31 @@
+ 	if (IS_ERR(ts->gpio_ce))
+ 		return dev_err_probe(&client->dev, PTR_ERR(ts->gpio_ce), "Failed to get gpio\n");
+ 
++	/*
++	 * J701F local: power the controller from the driver and let it boot
++	 * before the first I2C access. Talking to the MMS438 while it is still
++	 * starting leaves it answering 0x80 to every read with the attention
++	 * line held low.
++	 */
++	ts->vdd = devm_regulator_get_optional(&client->dev, "vdd");
++	if (IS_ERR(ts->vdd)) {
++		if (PTR_ERR(ts->vdd) != -ENODEV)
++			return dev_err_probe(&client->dev, PTR_ERR(ts->vdd),
++					     "Failed to get vdd regulator\n");
++		ts->vdd = NULL;
++	}
++	if (ts->vdd) {
++		error = regulator_enable(ts->vdd);
++		if (error)
++			return dev_err_probe(&client->dev, error,
++					     "Failed to enable vdd\n");
++		error = devm_add_action_or_reset(&client->dev,
++						 mip4_disable_vdd, ts->vdd);
++		if (error)
++			return error;
++		msleep(300);
++	}
++
+ 	error = mip4_power_on(ts);
+ 	if (error)
+ 		return error;

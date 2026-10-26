@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-08. Seventh diagnostic: the USB/MUIC tree plus the
+ * internal eMMC controller for enumeration only. The initramfs mounts no block
+ * filesystem. The &mmc0 block is identical in the pinned tree's a2corelte,
+ * j5y17lte, j6lte and on7xelte boards; LDO26/LDO27 are this board's live
+ * "vemmc"/"vqemmc" rails. No HS200/HS400 properties: plain high-speed first.
+ */
+#include "exynos7870-j7velte-usbdiag.dts"
+
+&mmc0 {
+    pinctrl-names = "default";
+    pinctrl-0 = <&sd0_clk &sd0_cmd &sd0_rdqs &sd0_bus1 &sd0_bus4 &sd0_bus8>;
+
+    vmmc-supply = <&vdd_ldo26>;
+    vqmmc-supply = <&vdd_ldo27>;
+
+    fifo-depth = <64>;
+    samsung,dw-mshc-ciu-div = <3>;
+    samsung,dw-mshc-sdr-timing = <0 4>;
+    samsung,dw-mshc-ddr-timing = <2 4>;
+    non-removable;
+
+    status = "okay";
+};

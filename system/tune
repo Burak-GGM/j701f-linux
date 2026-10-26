@@ -1,0 +1,59 @@
+#!/bin/sh
+# Written by Claude 2026-10-10. Installed as /etc/local.d/j701f-tune.start.
+# Memory and I/O settings for a phone with 1.6 GB of RAM (both kernels).
+# Measurements behind these choices: wiki/reference/performance.md
+#
+# Compressed swap in RAM: without it the first heavy web page pushes the
+# desktop into reclaim. zram costs CPU only when it is used.
+if [ -b /dev/zram0 ] && ! grep -q zram0 /proc/swaps; then
+    for alg in zstd lz4 lzo-rle; do
+        echo "$alg" > /sys/block/zram0/comp_algorithm 2>/dev/null && break
+    done
+    echo 1200M > /sys/block/zram0/disksize && mkswap /dev/zram0 >/dev/null 2>&1 && swapon -p 100 /dev/zram0
+fi
+# With RAM-backed swap, swapping early is cheap and reading ahead is pointless.
+# The high swappiness is only set once the desktop has settled (below): while it
+# starts, the home screen allocates and releases several hundred MB of GPU
+# buffers, and with swappiness 100 the kernel answered that spike by swapping
+# out 270 MB of the freshly started desktop.
+echo 10 > /proc/sys/vm/swappiness
+echo 0 > /proc/sys/vm/page-cluster
+# Do not rewrite inode access times on every read of the eMMC.
+mount -o remount,noatime / 2>/dev/null
+# Larger read-ahead helps application start-up from eMMC.
+[ -w /sys/block/mmcblk0/queue/read_ahead_kb ] && echo 512 > /sys/block/mmcblk0/queue/read_ahead_kb
+# Panfrost: let the kernel reclaim the buffers Mesa parked in its cache, but
+# not the ones another client (the compositor) or a dma-buf still refers to.
+# Those were being purged while on screen (black areas in Angelfish, WARN in
+# panfrost_gem_open). Mode 0 (never purge) pinned 220 MB in the on-screen
+# keyboard alone, so it is not used.
+P=/sys/module/panfrost/parameters/shrinker_purge
+[ -w $P ] && { echo 2 > $P 2>/dev/null || true; }
+# Read the browser engine into the page cache once the desktop has settled, so
+# the first start of Angelfish after boot is a warm start (measured 7.0 s cold,
+# 5.4 s warm to the first web view). It is ordinary page cache: the kernel drops
+# it again whenever the memory is needed for something else.
+# Just before that, ask the kernel's shrinkers to run once: the desktop leaves
+# 300-500 MB of already-released GPU buffers behind after start-up, and without
+# this the read below made the kernel swap out 270 MB of the desktop instead.
+(
+    sleep 75
+    echo 2 > /proc/sys/vm/drop_caches
+    for f in /usr/lib/libQt6WebEngineCore.so.6 /usr/lib/libQt6WebEngineQuick.so.6 \
+             /usr/lib/qt6/libexec/QtWebEngineProcess /usr/share/qt6/resources/*.pak \
+             /usr/share/qt6/resources/icudtl.dat /usr/bin/angelfish; do
+        [ -f "$f" ] && nice -n 19 cat "$f" > /dev/null 2>&1
+    done
+    echo 100 > /proc/sys/vm/swappiness
+) &
+# Application catalogue for the Software store (AppStream data from Alpine):
+# refreshed in the background when it is missing or more than a week old.
+if [ -x /usr/sbin/alpine-appstream-downloader ]; then
+    if ! find /var/lib/swcatalog/xml -name '*.xml.gz' -mtime -7 2>/dev/null | grep -q .; then
+        ( sleep 240; umask 022; nice -n 19 alpine-appstream-downloader >/dev/null 2>&1; chmod -R a+rX /var/lib/swcatalog 2>/dev/null ) &
+    fi
+fi
+# Touch boost (system/inputboost): raises the CPU frequency floor while the
+# screen is being touched.
+[ -x /usr/local/sbin/j701f-inputboost ] && { pgrep -x j701f-inputboos >/dev/null || nice -n -5 /usr/local/sbin/j701f-inputboost >/dev/null 2>&1 & }
+exit 0

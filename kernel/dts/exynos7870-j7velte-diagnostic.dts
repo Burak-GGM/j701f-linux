@@ -1,0 +1,221 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Samsung Galaxy J7 Core / J7 Nxt (SM-J701F, j7velte), diagnostic draft.
+ * Measured board data: ../j701f-hardware.json, live hardware revision 3.
+ * Not boot-tested. Storage, GPU and display are deliberately disabled for
+ * the first RAM diagnostic. USB VDD33=LDO8 remains a related-board wiring
+ * hypothesis; see docs/j701f-mainline.md before any hardware boot.
+ */
+/dts-v1/;
+#include "exynos7870.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include "exynos7870-j7velte-pmic.dtsi"
+
+/ {
+	model = "Samsung Galaxy J7 Core / J7 Nxt (SM-J701F) diagnostic";
+	compatible = "samsung,j7velte", "samsung,exynos7870";
+	chassis-type = "handset";
+	model_info-hw_rev = <3>;
+	model_info-hw_rev_end = <255>;
+
+	aliases {
+		serial2 = &serial2;
+	};
+
+	chosen {
+		stdout-path = "serial2:115200n8";
+		bootargs = "rdinit=/init console=ttySAC2,115200n8 loglevel=8 ignore_loglevel clk_ignore_unused regulator_ignore_unused panic=10";
+	};
+
+	/* Both banks and the gap are measured, not borrowed from another board. */
+	memory@40000000 {
+		device_type = "memory";
+		reg = <0x0 0x40000000 0x3e400000>,
+		      <0x0 0x80000000 0x40000000>;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&key_power &key_home &key_voldown &key_volup>;
+		key-power {
+			label = "Power";
+			linux,code = <KEY_POWER>;
+			gpios = <&gpa0 0 GPIO_ACTIVE_LOW>;
+		};
+		key-home {
+			label = "Home";
+			linux,code = <KEY_HOMEPAGE>;
+			gpios = <&gpa1 7 GPIO_ACTIVE_LOW>;
+		};
+		key-voldown {
+			label = "Volume Down";
+			linux,code = <KEY_VOLUMEDOWN>;
+			gpios = <&gpa2 1 GPIO_ACTIVE_LOW>;
+		};
+		key-volup {
+			label = "Volume Up";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&gpa2 0 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <1>;
+		ranges;
+		/* Conservative envelope around the vendor ess_setup/log regions.
+		 * These addresses appear in live chosen/bootargs. It is not a
+		 * claim that the whole 16 MiB belongs to one hardware device.
+		 */
+		vendor-debug@46000000 {
+			reg = <0x0 0x46000000 0x1000000>;
+			no-map;
+		};
+		tima-region@52a00000 {
+			reg = <0x0 0x52a00000 0x200000>;
+			no-map;
+		};
+
+		bootloader-fb@67000000 {
+			reg = <0x0 0x67000000 0xa00000>;
+			no-map;
+		};
+
+		crypto@80000000 {
+			reg = <0x0 0x80000000 0x800000>;
+			no-map;
+		};
+
+		video-fw@80800000 {
+			reg = <0x0 0x80800000 0x400000>;
+			no-map;
+		};
+
+		video-nfw@80c00000 {
+			reg = <0x0 0x80c00000 0x400000>;
+			no-map;
+		};
+
+		video-stream@81000000 {
+			reg = <0x0 0x81000000 0x1400000>;
+			no-map;
+		};
+
+		video-frame@82400000 {
+			reg = <0x0 0x82400000 0x5400000>;
+			no-map;
+		};
+
+		video-scaler@87800000 {
+			reg = <0x0 0x87800000 0x1c00000>;
+			no-map;
+		};
+
+		mfc-nfw@ae600000 {
+			reg = <0x0 0xae600000 0x200000>;
+			no-map;
+		};
+
+		mfc-fw@ae800000 {
+			reg = <0x0 0xae800000 0x200000>;
+			no-map;
+		};
+
+		dram-init@affff000 {
+			reg = <0x0 0xaffff000 0x1000>;
+			no-map;
+		};
+
+		modem-if@b0000000 {
+			reg = <0x0 0xb0000000 0x7800000>;
+			no-map;
+		};
+
+		gnss-if@b7c00000 {
+			reg = <0x0 0xb7c00000 0x400000>;
+			no-map;
+		};
+	};
+};
+
+&oscclk {
+	clock-frequency = <26000000>;
+};
+
+&pmu_system_controller {
+	reboot-mode {
+		/* Vendor sec_reboot.c: SEC_RESET_REASON_UNKNOWN (normal restart). */
+		mode-normal = <0x12345670>;
+	};
+};
+
+&serial2 {
+	status = "okay";
+};
+
+&pinctrl_alive {
+	key_power: key-power-pins {
+		samsung,pins = "gpa0-0";
+		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+	};
+	key_home: key-home-pins {
+		samsung,pins = "gpa1-7";
+		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+	};
+	key_voldown: key-voldown-pins {
+		samsung,pins = "gpa2-1";
+		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+	};
+	key_volup: key-volup-pins {
+		samsung,pins = "gpa2-0";
+		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+	};
+	pmic_irq: pmic-irq-pins {
+		samsung,pins = "gpa0-2";
+		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
+	};
+};
+
+&usbdrd {
+	/* LDO8 is a hypothesis from the pinned related-board trees.
+	 * The live vendor tree provides no USB supply phandle.
+	 */
+	vdd33-supply = <&vdd_ldo8>;
+	status = "okay";
+	usb@0 {
+		/delete-property/ usb-role-switch;
+		dr_mode = "peripheral";
+		maximum-speed = "high-speed";
+	};
+};
+
+/* Enabled only in later diagnostic stages, after USB/RAM boot evidence. */
+&mmc0 { status = "disabled"; };
+&mmc1 { status = "disabled"; };
+&mmc2 { status = "disabled"; };
+&gpu {
+	/* Matching r28p0 vendor driver requests BUCK2; live readings and
+	 * translation limits are recorded in ../j701f-gpu-evidence.json.
+	 * This binding does not implement the missing G3D power sequencing.
+	 */
+	mali-supply = <&vdd_buck2>;
+	status = "disabled";
+};
+
+/* These providers probe independently of their disabled consumers. The
+ * port does not describe Exynos7870 power domains yet. Leave unused
+ * GPU/display/camera/video CMUs untouched during the USB/RAM diagnostic.
+ * MIF, FSYS and PERI remain for RAM, USB, PMIC I2C and diagnostic UART.
+ */
+&cmu_g3d { status = "disabled"; };
+&cmu_dispaud { status = "disabled"; };
+&cmu_isp { status = "disabled"; };
+&cmu_mfcmscl { status = "disabled"; };

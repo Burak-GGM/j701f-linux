@@ -1,0 +1,12 @@
+#!/bin/sh
+# Written by Claude 2026-10-09. Loads the J701F audio modules by hand (they are
+# deliberately not in /lib/modules while the audio port is under test).
+# Usage: sudo sh ~/j701f/modules/audio/load.sh
+cd "$(dirname "$0")" || exit 1
+for m in exynos7870-lpass snd-soc-s3c-dma snd-soc-idma snd-soc-i2s j701f-cod3026x j701f-audio; do
+    sync
+    insmod "$m.ko" || { echo "insmod $m failed"; exit 1; }
+    sleep 1
+done
+sleep 1
+cat /proc/asound/cards

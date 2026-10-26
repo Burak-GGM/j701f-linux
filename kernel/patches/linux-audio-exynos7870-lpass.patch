@@ -1,0 +1,132 @@
+From: Claude <noreply@anthropic.com>
+Subject: Exynos7870 audio stage 1: fractional audio PLL and LPASS bring-up (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+Reference: vendor 3.18 lpass-exynos7870.c and pwrcal S5E7870 (see
+build/kernel/vendor-audio-reference/SOURCE.txt).
+---
+--- a/drivers/clk/samsung/clk-exynos7870.c
++++ b/drivers/clk/samsung/clk-exynos7870.c
+@@ -840,10 +840,20 @@
+ 	FRATE(0, "frat_dispaud_mipiphy_txbyteclkhs", NULL, 0, 188000000),
+ };
+ 
++/*
++ * J701F local: the audio PLL is a fractional PLL1431x in the vendor kernel
++ * (K divider in CON1), which matches the pll_36xx register layout, not the
++ * integer pll_1417x. The vendor audio rate is 98.304 MHz (2048 * 48 kHz); K=32426 (98304019 Hz) is what the bootloader programs.
++ */
++static const struct samsung_pll_rate_table dispaud_aud_pll_rates[] __initconst = {
++	PLL_36XX_RATE(26 * MHZ, 98304019U, 60, 2, 3, 32426),
++	{ /* sentinel */ }
++};
++
+ static const struct samsung_pll_clock dispaud_pll_clks[] __initconst = {
+-	PLL(pll_1417x, CLK_FOUT_DISPAUD_AUD_PLL, "fout_dispaud_aud_pll",
++	PLL(pll_36xx, CLK_FOUT_DISPAUD_AUD_PLL, "fout_dispaud_aud_pll",
+ 	    "oscclk", PLL_LOCKTIME_DISPAUD_AUD_PLL, PLL_CON0_DISPAUD_AUD_PLL,
+-	    NULL),
++	    dispaud_aud_pll_rates),
+ 	PLL(pll_1417x, CLK_FOUT_DISPAUD_PLL, "fout_dispaud_pll", "oscclk",
+ 	    PLL_LOCKTIME_DISPAUD_PLL, PLL_CON0_DISPAUD_PLL, NULL),
+ };
+--- a/sound/soc/samsung/Makefile
++++ b/sound/soc/samsung/Makefile
+@@ -10,6 +10,7 @@
+ obj-$(CONFIG_SND_SAMSUNG_SPDIF) += snd-soc-samsung-spdif.o
+ obj-$(CONFIG_SND_SAMSUNG_PCM) += snd-soc-pcm.o
+ obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-i2s.o
++obj-$(CONFIG_SND_SAMSUNG_I2S) += exynos7870-lpass.o
+ obj-$(CONFIG_SND_SAMSUNG_I2S) += snd-soc-idma.o
+ 
+ # S3C24XX Machine Support
+--- /dev/null
++++ b/sound/soc/samsung/exynos7870-lpass.c
+@@ -0,0 +1,87 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Exynos7870 audio subsystem ("LPASS") bring-up for the SM-J701F.
++ *
++ * Written by Claude 2026-10-09 for the J701F project, following the sequence
++ * of the vendor 3.18 sound/soc/samsung/lpass-exynos7870.c (lpass_enable()).
++ * Not an upstream driver.
++ *
++ * Clocks and their rates come from the device tree (clocks, assigned-clocks).
++ * This driver enables them, pulses the software resets of the audio mixer,
++ * amplifier I2S, main I2S and audio DMA in DISPAUD_CFG, releases the audio pad
++ * retention in the PMU and then creates its child devices (DMA, I2S, mixer).
++ */
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <linux/mfd/syscon.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
++#include <linux/regmap.h>
++
++#define DISPAUD_CFG			0x1000
++#define DISPAUD_CFG_SWRST_MASK		GENMASK(3, 0)	/* mixer, i2s, amp, dma */
++
++#define PMU_GPIO_MODE_AUD_SYS_PWR	0x1340
++#define PMU_PAD_RETENTION_AUD_OPTION	0x3028
++
++static int exynos7870_lpass_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct clk_bulk_data *clks;
++	struct regmap *pmu;
++	void __iomem *base;
++	int ret, i, nclk;
++	u32 val;
++
++	base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(base))
++		return PTR_ERR(base);
++
++	pmu = syscon_regmap_lookup_by_phandle(dev->of_node, "samsung,syscon-phandle");
++	if (IS_ERR(pmu))
++		return dev_err_probe(dev, PTR_ERR(pmu), "no PMU regmap\n");
++
++	nclk = devm_clk_bulk_get_all_enabled(dev, &clks);
++	if (nclk < 0)
++		return dev_err_probe(dev, nclk, "cannot enable audio clocks\n");
++	for (i = 0; i < nclk; i++)
++		dev_info(dev, "clock %s: %lu Hz\n", clks[i].id ?: "?", clk_get_rate(clks[i].clk));
++
++	val = readl(base + DISPAUD_CFG);
++	writel(val | DISPAUD_CFG_SWRST_MASK, base + DISPAUD_CFG);
++	udelay(100);
++	writel(val & ~DISPAUD_CFG_SWRST_MASK, base + DISPAUD_CFG);
++
++	/* Same two writes as the vendor lpass_release_pad_reg(). */
++	regmap_update_bits(pmu, PMU_PAD_RETENTION_AUD_OPTION, BIT(28), 0);
++	regmap_update_bits(pmu, PMU_GPIO_MODE_AUD_SYS_PWR, BIT(0), BIT(0));
++
++	dev_info(dev, "audio subsystem enabled, DISPAUD_CFG %#x -> %#x\n",
++		 val, readl(base + DISPAUD_CFG));
++
++	ret = devm_of_platform_populate(dev);
++	if (ret)
++		return dev_err_probe(dev, ret, "cannot create audio devices\n");
++	return 0;
++}
++
++static const struct of_device_id exynos7870_lpass_match[] = {
++	{ .compatible = "j701f,exynos7870-lpass" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, exynos7870_lpass_match);
++
++static struct platform_driver exynos7870_lpass_driver = {
++	.driver = {
++		.name = "exynos7870-lpass",
++		.of_match_table = exynos7870_lpass_match,
++	},
++	.probe = exynos7870_lpass_probe,
++};
++module_platform_driver(exynos7870_lpass_driver);
++
++MODULE_DESCRIPTION("Exynos7870 audio subsystem bring-up (SM-J701F local)");
++MODULE_LICENSE("GPL");

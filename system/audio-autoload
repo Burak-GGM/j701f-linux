@@ -1,0 +1,28 @@
+#!/bin/sh
+# Written by Claude 2026-10-09. Installed as /etc/local.d/j701f-audio.start.
+# Loads the J701F audio modules, and then the video codec modules, at boot
+# (mainline only). They are kept out of
+# /lib/modules on purpose. A stamp file guards against a reset loop: if the
+# phone reset while a load was "pending", the next boot skips the modules; the
+# boot after that tries again.
+D=/home/burak-alpine/j701f/modules/audio
+S=/var/lib/j701f-audio.pending
+[ -d /sys/firmware/devicetree/base/soc@0/audio-subsystem@148f0000 ] || exit 0
+[ -f "$D/load.sh" ] || exit 0
+# Claude 2026-10-10: like the GPU speed guard, a found stamp now costs one boot
+# only (it is removed here; the next boot loads the modules again). Left in
+# place it had silently disabled sound, the video decoder and the other local
+# modules on every later boot after a single unlucky reset or unclean reboot.
+[ -e "$S" ] && { rm -f "$S"; sync; echo "j701f-audio: previous load did not survive; modules stay unloaded for this boot only" >/dev/kmsg; exit 0; }
+(
+    : >"$S"; sync
+    sh "$D/load.sh"
+    # hardware video codec modules, same guard (Claude 2026-10-09)
+    [ -f /home/burak-alpine/j701f/modules/mfc/load.sh ] && sh /home/burak-alpine/j701f/modules/mfc/load.sh
+    # cameras (Claude 2026-10-10), same guard
+    [ -f /home/burak-alpine/j701f/modules/camera/load.sh ] && sh /home/burak-alpine/j701f/modules/camera/load.sh
+    # other hand-loaded local modules (charger status, ...), same guard
+    for m in /home/burak-alpine/j701f/modules/misc/*.ko; do [ -f "$m" ] && insmod "$m"; done
+    sleep 60
+    rm -f "$S"; sync
+) >/dev/null 2>&1 &

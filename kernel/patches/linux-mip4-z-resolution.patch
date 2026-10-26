@@ -1,0 +1,26 @@
+From: Claude <noreply@anthropic.com>
+Subject: Input: melfas_mip4 - mirror a missing axis resolution (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+Applies after linux-mip4-vdd-supply.patch (file name sorts last on purpose).
+The MMS438 reports ppm_x = 10 and ppm_y = 0; KWin's libinput logs "kernel has
+only x or y resolution, not both" and ignores the device.
+---
+--- a/drivers/input/touchscreen/melfas_mip4.c
++++ b/drivers/input/touchscreen/melfas_mip4.c
+@@ -335,6 +335,15 @@
+ 
+ 		ts->ppm_x = buf[12];
+ 		ts->ppm_y = buf[13];
++		/*
++		 * J701F local: this panel reports only an X resolution.
++		 * libinput rejects a touchscreen with one resolution set
++		 * and the other zero, so mirror the one that is known.
++		 */
++		if (!ts->ppm_y)
++			ts->ppm_y = ts->ppm_x;
++		else if (!ts->ppm_x)
++			ts->ppm_x = ts->ppm_y;
+ 		dev_dbg(&ts->client->dev, "ppm_x: %d, ppm_y: %d\n",
+ 			ts->ppm_x, ts->ppm_y);
+ 

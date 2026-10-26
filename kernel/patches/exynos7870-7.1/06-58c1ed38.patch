@@ -1,0 +1,32 @@
+From 58c1ed383cff40887fd777c4bd62332c893f49ca Mon Sep 17 00:00:00 2001
+From: Kaustabh Chakraborty <kauschluss@disroot.org>
+Date: Wed, 15 Apr 2026 20:32:09 +0530
+Subject: [PATCH] FROMLIST: mmc: dw_mmc: exynos: increase DMA threshold value
+ for exynos7870
+
+Exynos 7870 compatible controllers, such as SDIO ones are not able to
+perform DMA transfers for small sizes of data (~16 to ~512 bytes),
+resulting in cache issues in subsequent transfers. Increase the DMA
+transfer threshold to 512 to allow the shorter transfers to take place,
+bypassing DMA.
+
+Signed-off-by: Kaustabh Chakraborty <kauschluss@disroot.org>
+---
+ drivers/mmc/host/dw_mmc-exynos.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/mmc/host/dw_mmc-exynos.c b/drivers/mmc/host/dw_mmc-exynos.c
+index 261344d3a8cf..4b76b997ddc1 100644
+--- a/drivers/mmc/host/dw_mmc-exynos.c
++++ b/drivers/mmc/host/dw_mmc-exynos.c
+@@ -141,6 +141,7 @@ static int dw_mci_exynos_priv_init(struct dw_mci *host)
+ 		priv->ctrl_type == DW_MCI_TYPE_EXYNOS7870_SMU) {
+ 		/* Quirk needed for certain Exynos SoCs */
+ 		host->quirks |= DW_MMC_QUIRK_FIFO64_32;
++		host->dma_threshold = 512;
+ 	}
+ 
+ 	if (priv->ctrl_type == DW_MCI_TYPE_ARTPEC8) {
+-- 
+GitLab
+

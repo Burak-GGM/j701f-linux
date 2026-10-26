@@ -1,0 +1,241 @@
+From: Claude <noreply@anthropic.com>
+Subject: clk: samsung: Exynos7870 GPU PLL rates and clock parking (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+---
+--- a/drivers/clk/samsung/Makefile
++++ b/drivers/clk/samsung/Makefile
+@@ -22,6 +22,7 @@
+ obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos2200.o
+ obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos7.o
+ obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos7870.o
++obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos7870-g3d-park.o
+ obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos7885.o
+ obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos850.o
+ obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos8895.o
+--- a/drivers/clk/samsung/clk-exynos7870.c
++++ b/drivers/clk/samsung/clk-exynos7870.c
+@@ -1177,9 +1177,25 @@
+ 	CLK_CON_GAT_G3D_SYSREG_PCLK,
+ };
+ 
++/*
++ * J701F local: GPU PLL steps. The bootloader programs M=343, P=13, S=1 for
++ * 343 MHz (fout = 26 MHz * M / (13 * 2) = M MHz); the other vendor GPU steps
++ * keep P and S and change M only.
++ */
++static const struct samsung_pll_rate_table g3d_pll_rates[] __initconst = {
++	PLL_35XX_RATE(26 * MHZ, 1001000000U, 1001, 13, 1),
++	PLL_35XX_RATE(26 * MHZ, 845000000U, 845, 13, 1),
++	PLL_35XX_RATE(26 * MHZ, 728000000U, 728, 13, 1),
++	PLL_35XX_RATE(26 * MHZ, 676000000U, 676, 13, 1),
++	PLL_35XX_RATE(26 * MHZ, 545000000U, 545, 13, 1),
++	PLL_35XX_RATE(26 * MHZ, 450000000U, 450, 13, 1),
++	PLL_35XX_RATE(26 * MHZ, 343000000U, 343, 13, 1),
++	{ /* sentinel */ }
++};
++
+ static const struct samsung_pll_clock g3d_pll_clks[] __initconst = {
+ 	PLL(pll_1417x, CLK_FOUT_G3D_PLL, "fout_g3d_pll", "oscclk",
+-	    PLL_LOCKTIME_G3D_PLL, PLL_CON0_G3D_PLL, NULL),
++	    PLL_LOCKTIME_G3D_PLL, PLL_CON0_G3D_PLL, g3d_pll_rates),
+ };
+ 
+ /* List of parent clocks for muxes in CMU_G3D */
+@@ -1190,14 +1206,15 @@
+ static const struct samsung_mux_clock g3d_mux_clks[] __initconst = {
+ 	MUX(CLK_MOUT_G3D_SWITCH_USER, "mout_g3d_switch_user",
+ 	    mout_g3d_switch_user_p, CLK_CON_MUX_G3D_SWITCH_USER, 12, 1),
+-	MUX(CLK_MOUT_G3D, "mout_g3d", mout_g3d_p, CLK_CON_MUX_G3D, 12, 1),
++	MUX_F(CLK_MOUT_G3D, "mout_g3d", mout_g3d_p, CLK_CON_MUX_G3D, 12, 1,
++	      CLK_SET_RATE_PARENT, 0),
+ };
+ 
+ static const struct samsung_div_clock g3d_div_clks[] __initconst = {
+ 	DIV(CLK_DOUT_G3D_APB, "dout_g3d_apb", "dout_g3d_bus",
+ 	    CLK_CON_DIV_G3D_APB, 0, 3),
+-	DIV(CLK_DOUT_G3D_BUS, "dout_g3d_bus", "gout_g3d_mux",
+-	    CLK_CON_DIV_G3D_BUS, 0, 3),
++	DIV_F(CLK_DOUT_G3D_BUS, "dout_g3d_bus", "gout_g3d_mux",
++	      CLK_CON_DIV_G3D_BUS, 0, 3, CLK_SET_RATE_PARENT, 0),
+ };
+ 
+ static const struct samsung_gate_clock g3d_gate_clks[] __initconst = {
+--- /dev/null
++++ b/drivers/clk/samsung/clk-exynos7870-g3d-park.c
+@@ -0,0 +1,175 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Exynos7870 GPU clock parking for PLL rate changes (SM-J701F local driver).
++ *
++ * Written by Claude 2026-10-09 for the J701F project; not an upstream driver.
++ *
++ * Panfrost's devfreq changes the GPU frequency with clk_set_rate() on a clock
++ * derived from the G3D PLL. While that PLL relocks its output is not usable,
++ * so this driver listens for rate changes of the PLL and, around each one,
++ * moves the GPU onto the CMU "switch" clock (399.75 MHz from CMU_MIF) and back.
++ *
++ * Safety: the driver also holds a PM QoS maximum-frequency request on the GPU
++ * device. Its default equals the bootloader's 343 MHz, so devfreq never asks
++ * for another rate until max_khz is raised through
++ * /sys/module/exynos7870_g3d_park/parameters/max_khz. A hang during a first
++ * manual test is then followed by a watchdog reset into an unchanged system.
++ */
++#include <linux/clk.h>
++#include <linux/io.h>
++#include <linux/iopoll.h>
++#include <linux/module.h>
++#include <linux/moduleparam.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
++#include <linux/pm_qos.h>
++
++#define MUX_SWITCH_USER		0x204
++#define MUX_G3D			0x208
++#define STAT_SWITCH_USER	0x604
++#define STAT_G3D		0x608
++#define MUX_SEL			BIT(12)
++#define MUX_STAT_MASK		GENMASK(14, 12)
++#define MUX_STAT_IN0		BIT(12)
++#define MUX_STAT_IN1		BIT(13)
++
++#define BOOT_KHZ		343000
++
++struct g3d_park {
++	struct device *dev;
++	void __iomem *base;
++	struct notifier_block nb;
++	struct dev_pm_qos_request qos;
++	bool qos_active;
++	bool parked;
++};
++
++static struct g3d_park *g3d_park;
++static int max_khz = BOOT_KHZ;
++
++static int g3d_park_max_set(const char *val, const struct kernel_param *kp)
++{
++	int ret = param_set_int(val, kp);
++
++	if (!ret && g3d_park && g3d_park->qos_active)
++		dev_pm_qos_update_request(&g3d_park->qos, max_khz);
++	return ret;
++}
++
++static const struct kernel_param_ops g3d_park_max_ops = {
++	.set = g3d_park_max_set,
++	.get = param_get_int,
++};
++module_param_cb(max_khz, &g3d_park_max_ops, &max_khz, 0644);
++MODULE_PARM_DESC(max_khz, "highest GPU frequency devfreq may use (default 343000: no scaling)");
++
++static int g3d_wait(void __iomem *reg, u32 want)
++{
++	u32 val;
++
++	return readl_poll_timeout(reg, val, (val & MUX_STAT_MASK) == want, 10, 5000);
++}
++
++static int g3d_park_notify(struct notifier_block *nb, unsigned long event, void *data)
++{
++	struct g3d_park *p = container_of(nb, struct g3d_park, nb);
++	void __iomem *base = p->base;
++	int ret = 0;
++
++	switch (event) {
++	case PRE_RATE_CHANGE:
++		writel(readl(base + MUX_SWITCH_USER) | MUX_SEL, base + MUX_SWITCH_USER);
++		ret = g3d_wait(base + STAT_SWITCH_USER, MUX_STAT_IN1);
++		if (ret)
++			break;
++		writel(readl(base + MUX_G3D) | MUX_SEL, base + MUX_G3D);
++		ret = g3d_wait(base + STAT_G3D, MUX_STAT_IN1);
++		if (!ret)
++			p->parked = true;
++		break;
++	case POST_RATE_CHANGE:
++	case ABORT_RATE_CHANGE:
++		if (!p->parked)
++			break;
++		writel(readl(base + MUX_G3D) & ~MUX_SEL, base + MUX_G3D);
++		ret = g3d_wait(base + STAT_G3D, MUX_STAT_IN0);
++		p->parked = false;
++		break;
++	}
++
++	if (ret)
++		dev_err(p->dev, "GPU clock mux did not switch (event %lu)\n", event);
++	return notifier_from_errno(ret);
++}
++
++static int g3d_park_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct platform_device *gpu_pdev;
++	struct device_node *gpu_np;
++	struct g3d_park *p;
++	struct clk *pll, *sw;
++	struct resource *res;
++	int ret;
++
++	p = devm_kzalloc(dev, sizeof(*p), GFP_KERNEL);
++	if (!p)
++		return -ENOMEM;
++	p->dev = dev;
++
++	/* Shared with the clock controller, so map without claiming it. */
++	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	if (!res)
++		return -EINVAL;
++	p->base = devm_ioremap(dev, res->start, resource_size(res));
++	if (!p->base)
++		return -ENOMEM;
++
++	sw = devm_clk_get_enabled(dev, "switch");
++	if (IS_ERR(sw))
++		return dev_err_probe(dev, PTR_ERR(sw), "no switch clock\n");
++	pll = devm_clk_get(dev, "pll");
++	if (IS_ERR(pll))
++		return dev_err_probe(dev, PTR_ERR(pll), "no pll clock\n");
++
++	gpu_np = of_parse_phandle(dev->of_node, "gpu", 0);
++	gpu_pdev = gpu_np ? of_find_device_by_node(gpu_np) : NULL;
++	of_node_put(gpu_np);
++	if (!gpu_pdev)
++		return dev_err_probe(dev, -EPROBE_DEFER, "GPU device not ready\n");
++
++	ret = dev_pm_qos_add_request(&gpu_pdev->dev, &p->qos,
++				     DEV_PM_QOS_MAX_FREQUENCY, max_khz);
++	if (ret < 0)
++		return dev_err_probe(dev, ret, "cannot add GPU frequency limit\n");
++	p->qos_active = true;
++
++	p->nb.notifier_call = g3d_park_notify;
++	ret = devm_clk_notifier_register(dev, pll, &p->nb);
++	if (ret) {
++		p->qos_active = false;
++		dev_pm_qos_remove_request(&p->qos);
++		return ret;
++	}
++
++	g3d_park = p;
++	dev_info(dev, "GPU PLL parking ready, limit %d kHz, switch clock %lu Hz\n",
++		 max_khz, clk_get_rate(sw));
++	return 0;
++}
++
++static const struct of_device_id g3d_park_match[] = {
++	{ .compatible = "j701f,exynos7870-g3d-park" },
++	{ }
++};
++
++static struct platform_driver g3d_park_driver = {
++	.driver = {
++		.name = "exynos7870_g3d_park",
++		.of_match_table = g3d_park_match,
++		.suppress_bind_attrs = true,
++	},
++	.probe = g3d_park_probe,
++};
++builtin_platform_driver(g3d_park_driver);

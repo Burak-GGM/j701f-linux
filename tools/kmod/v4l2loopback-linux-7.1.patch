@@ -1,0 +1,23 @@
+Written by Claude 2026-10-10. v4l2loopback v0.15.1 (GPL-2.0) against Linux 7.1: v4l2_fh_add() and
+v4l2_fh_del() take the file as a second argument. Applied to the copy in build/kernel/v4l2loopback-mod.
+
+--- a/v4l2loopback.c
++++ b/v4l2loopback.c
+@@ -2334,7 +2334,7 @@
+ 	v4l2_fh_init(&opener->fh, video_devdata(file));
+ 	file->private_data = &opener->fh;
+ 
+-	v4l2_fh_add(&opener->fh);
++	v4l2_fh_add(&opener->fh, file);
+ 	dprintk("open() -> dev@%p with image@%p\n", dev,
+ 		dev ? dev->image : NULL);
+ 	return 0;
+@@ -2383,7 +2383,7 @@
+ 		}
+ 	}
+ 
+-	v4l2_fh_del(&opener->fh);
++	v4l2_fh_del(&opener->fh, file);
+ 	v4l2_fh_exit(&opener->fh);
+ 
+ 	kfree(opener);

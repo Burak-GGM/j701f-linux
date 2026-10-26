@@ -1,0 +1,48 @@
+#!/bin/sh
+export PATH=/bin
+mkdir -p /dev/input
+for event_device in /sys/class/input/event*; do
+    [ -r "$event_device/dev" ] || continue
+    event_name=${event_device##*/}
+    [ ! -c "/dev/input/$event_name" ] || continue
+    dev=$(cat "$event_device/dev")
+    major=${dev%:*}; minor=${dev#*:}
+    case "$major:$minor" in *[!0-9:]*|:*) continue ;; esac
+    mknod -m 600 "/dev/input/$event_name" c "$major" "$minor"
+done
+n=0
+while [ "$n" -lt 30 ]; do
+    for device in /sys/class/graphics/fb*; do
+        [ -r "$device/dev" ] || continue
+        name=${device##*/}
+        case "$name" in fb[0-9]*) ;; *) continue ;; esac
+        node=/dev/$name
+        if [ ! -c "$node" ]; then
+            dev=$(cat "$device/dev")
+            major=${dev%:*}; minor=${dev#*:}
+            case "$major:$minor" in *[!0-9:]*|:*) continue ;; esac
+            mknod -m 600 "$node" c "$major" "$minor" || continue
+        fi
+        # Use the display-class interfaces that exist, with their reported range.
+        [ ! -e "$device/blank" ] || printf '0\n' > "$device/blank"
+        for panel in /sys/class/backlight/*; do
+            [ -r "$panel/max_brightness" ] && [ -w "$panel/brightness" ] || continue
+            maximum=$(cat "$panel/max_brightness")
+            case "$maximum" in ''|*[!0-9]*) continue ;; esac
+            brightness=$((maximum / 3))
+            [ "$brightness" -gt 0 ] || brightness=1
+            [ "$brightness" -le "$maximum" ] || continue
+            [ ! -e "$panel/bl_power" ] || printf '0\n' > "$panel/bl_power"
+            printf '%s\n' "$brightness" > "$panel/brightness"
+        done
+        printf 'Starting on-device terminal on %s\n' "$node"
+        /bin/ondevice-terminal "$node"
+        # Claude 2026-10-08: installed-system variant of ramdisk/bin/display-status
+        # without the fb-heartbeat fallback (removed from the phone at the user's
+        # request). The rescue image keeps the original file.
+        printf 'Terminal unavailable on %s\n' "$node"
+        # If this framebuffer is unsupported, try another discovered device.
+    done
+    sleep 1; n=$((n+1))
+done
+printf 'No usable framebuffer; inspect USB logs for more information\n'

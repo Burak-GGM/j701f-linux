@@ -1,0 +1,22 @@
+#!/bin/sh
+# Written by Claude 2026-10-08. Userspace stand-in for the missing S2MU005 MUIC
+# driver: vendor manual-switch mode (CTRL1 0xb2 = 0x13) and D+/D- routed to the
+# AP USB port (SW_CTRL 0xb5 = 0x24, keeping the two low bits).
+export PATH=/bin:/sbin
+tries=0
+while [ "$tries" -lt 20 ]; do
+    for d in /sys/devices/platform/soc@0/13870000.i2c/i2c-*; do
+        [ -e "$d" ] || continue
+        bus=/dev/i2c-${d##*-}
+        [ -c "$bus" ] || continue
+        old=$(i2c-peek "$bus" 3d r b5) || { echo "MUIC read failed: $old"; exit 1; }
+        i2c-peek "$bus" 3d w b2 13
+        i2c-peek "$bus" 3d w b5 "$(printf '%02x' $(( (old & 3) | 0x24 )))"
+        echo "MUIC $bus sw_ctrl $old -> $(i2c-peek "$bus" 3d r b5)"
+        exit 0
+    done
+    sleep 1
+    tries=$((tries + 1))
+done
+echo 'MUIC I2C bus did not appear'
+exit 1

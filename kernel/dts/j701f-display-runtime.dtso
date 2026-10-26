@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* RAM-only equivalent of display-trial2 on bl7; reboot discards this tree.
+ * iommus is removed by the guarded loader before enabling DECON: an overlay's
+ * /delete-property/ directive cannot delete a property of the base tree.
+ * Stop the compositor and unbind simpledrm BEFORE applying. No DISPAUD reset.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "samsung,j7velte";
+
+	fragment@0 {
+		target-path = "/chosen/framebuffer@67000000";
+		__overlay__ { status = "disabled"; };
+	};
+
+	fragment@1 {
+		target-path = "/soc@0/iommu@14860000";
+		__overlay__ { status = "disabled"; };
+	};
+
+	fragment@2 {
+		target-path = "/soc@0/dsi@14800000";
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			samsung,pll-clock-frequency = <26000000>;
+			samsung,burst-clock-frequency = <477000000>;
+			samsung,esc-clock-frequency = <16000000>;
+			status = "okay";
+
+			panel@0 {
+				compatible = "samsung,j701f-ea8061s";
+				reg = <0>;
+				vddio-supply = <&vdd_ldo30>;
+				vci-supply = <&vdd_ldo29>;
+				reset-gpios = <&gpd3 4 1>;
+				port {
+					runtime_panel_in: endpoint {
+						remote-endpoint = <&runtime_dsi_out>;
+					};
+				};
+			};
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@1 {
+					reg = <1>;
+					runtime_dsi_out: endpoint {
+						remote-endpoint = <&runtime_panel_in>;
+						data-lanes = <1 2 3 4>;
+					};
+				};
+			};
+		};
+	};
+
+	fragment@3 {
+		target-path = "/soc@0/display-controller@14830000";
+		__overlay__ { status = "okay"; };
+	};
+};

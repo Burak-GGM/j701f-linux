@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+# Written by Claude 2026-10-10. Installed as /etc/init.d/j701f-display (owner's permission).
+# Runs the native-display switch before the display manager; see
+# system/display-native/switch.sh (to be installed as
+# /usr/local/sbin/j701f-display-switch).
+description="J701F: switch to the native display driver before the desktop starts"
+depend() {
+    before sddm display-manager
+    need localmount
+}
+start() {
+    ebegin "J701F native display"
+    /usr/local/sbin/j701f-display-switch
+    eend 0
+}

@@ -1,0 +1,11 @@
+--- a/arch/arm/cpu/armv8/u-boot.lds
++++ b/arch/arm/cpu/armv8/u-boot.lds
+@@ -153,7 +153,7 @@
+ 	/*
+ 	 * arch/arm/lib/crt0_64.S assumes __bss_start - __bss_end % 8 == 0
+ 	 */
+-	.bss ADDR(.rela.dyn) (OVERLAY) : {
++	.bss ALIGN(8) (NOLOAD) : {
+ 		__bss_start = .;
+ 		*(.bss*)
+ 		. = ALIGN(8);

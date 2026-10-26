@@ -1,0 +1,30 @@
+From: Codex <codex@localhost>
+Subject: [PATCH] drm/bridge: samsung-dsim: start J701F inherited PLL from off
+
+The bounded native-dsimdiag2-01 trial finds PLL_EN and LINK_STATUS lock set
+before the first PLL programming, but no fresh completion. Error cleanup
+turns off the PLL; the following initialization completes immediately.
+Vendor code also explicitly handles an already-stable bootloader PLL.
+
+For the existing privileged J701F trial only, stop inherited DSIM clocks
+before reset when PLL_EN is set. This uses the same cleanup routine as the
+successful retry; leave PLL search, IRQ masks and every other device
+intact.
+Do not reset the shared DISPAUD power domain. Host regression checks real
+init ordering and failure cleanup; hardware verification is pending.
+---
+
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -1693,6 +1693,11 @@
+ 	if (dsi->state & DSIM_STATE_INITIALIZED)
+ 		return 0;
+ 
++	/* An inherited enabled PLL need not produce a new PLL_STABLE event. */
++	if (samsung_dsim_j701f_trial(dsi) &&
++	    (samsung_dsim_read(dsi, DSIM_PLLCTRL_REG) & DSIM_PLL_EN))
++		samsung_dsim_disable_clock(dsi);
++
+ 	samsung_dsim_reset(dsi);
+ 	samsung_dsim_enable_irq(dsi);
+ 

@@ -1,0 +1,26 @@
+Written by Claude 2026-10-10 for the J701F. Local patch, not sent anywhere.
+s5p-mfc: keep the first source buffer for decoding for every codec, not only
+H.264, when the header parser did not consume all of it.
+
+--- a/drivers/media/platform/samsung/s5p-mfc/s5p_mfc.c
++++ b/drivers/media/platform/samsung/s5p-mfc/s5p_mfc.c
+@@ -545,9 +545,16 @@
+ 		else
+ 			ctx->state = MFCINST_HEAD_PARSED;
+ 
+-		if ((ctx->codec_mode == S5P_MFC_CODEC_H264_DEC ||
+-			ctx->codec_mode == S5P_MFC_CODEC_H264_MVC_DEC) &&
+-				!list_empty(&ctx->src_queue)) {
++		/*
++		 * J701F: the first source buffer may hold the stream headers
++		 * and the first picture together (FFmpeg's V4L2 wrapper sends
++		 * it that way for every codec). Upstream keeps the buffer for
++		 * decoding only for H.264; for HEVC, MPEG-2 and the others
++		 * the first key frame was thrown away and nothing decoded
++		 * correctly until the next one ("sync point not received").
++		 * The vendor driver has the same check for H.264 and HEVC.
++		 */
++		if (!list_empty(&ctx->src_queue)) {
+ 			struct s5p_mfc_buf *src_buf;
+ 
+ 			src_buf = list_entry(ctx->src_queue.next,

@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-08. Tenth-stage tree (eMMC, GPU) plus the Melfas
+ * MMS438 touchscreen. Live vendor tree: "melfas,mms_ts" at 0x48 on
+ * i2c@13840000, attention on gpc3-2, supply "tsp_dvdd" (LDO34, 3.3 V), firmware
+ * mms438_j7ve; the vendor driver is melfas_mms400, which speaks MIP4, so the
+ * mainline melfas_mip4 driver is used. Upstream it has no regulator support;
+ * a local patch adds an optional vdd supply and a 300 ms boot delay, because
+ * with LDO34 merely always-on the controller was queried while still booting
+ * and then answered 0x80 to everything (touch dead, attention stuck low).
+ * Level-low trigger, as in the vendor driver (IRQF_TRIGGER_LOW). A falling-edge
+ * trigger was tried and is wrong here: the line stays low, no further edge
+ * arrives and touch stops after the first interrupt. The "Empty packet" log
+ * flood that level-low causes is silenced by
+ * kernel/patches/linux-mip4-empty-packet-debug.patch.
+ */
+#include "exynos7870-j7velte-gpu.dts"
+
+&i2c1 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+    samsung,i2c-sda-delay = <100>;
+    samsung,i2c-max-bus-freq = <400000>;
+    status = "okay";
+
+    touchscreen@48 {
+        compatible = "melfas,mip4_ts";
+        reg = <0x48>;
+        interrupt-parent = <&gpc3>;
+        interrupts = <2 IRQ_TYPE_LEVEL_LOW>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&touch_irq>;
+        /* Consumed by kernel/patches/linux-mip4-vdd-supply.patch. */
+        vdd-supply = <&vdd_ldo34>;
+    };
+};
+
+&pinctrl_touch {
+    touch_irq: touch-irq-pins {
+        samsung,pins = "gpc3-2";
+        samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
+        samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+    };
+};
+

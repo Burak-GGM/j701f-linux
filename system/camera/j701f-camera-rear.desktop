@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Camera (rear)
+Name[tr]=Kamera (arka)
+Comment=Take one photograph (no preview) and show it
+Comment[tr]=Tek bir fotoğraf çek (önizleme yok) ve göster
+Exec=/usr/local/bin/j701f-camera rear
+Icon=camera-photo
+Categories=Graphics;Photography;

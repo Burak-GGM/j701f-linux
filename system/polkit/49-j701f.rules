@@ -1,0 +1,21 @@
+// Written by Claude 2026-10-10 (roadmap 2, A.2). Installed as
+// /etc/polkit-1/rules.d/49-j701f.rules.
+//
+// 1. The phone's user is the administrator. Without this, polkit's default
+//    (members of group "wheel", else root) made every "Authentication
+//    required" dialog ask for root's password, so the user's own correct
+//    password was rejected.
+polkit.addAdminRule(function(action, subject) {
+    return ["unix-user:burak-alpine"];
+});
+
+// 2. Installing, removing and updating packages from the software store needs
+//    no password for that user while he is at the phone (local, active
+//    session). The same user already has password-less sudo, so this grants
+//    nothing new; it removes a dialog that is very slow to type in.
+polkit.addRule(function(action, subject) {
+    if ((action.id.indexOf("dev.Cogitri.apkPolkit") == 0 ||
+         action.id == "org.kde.discover.alpineapkbackend.pkgmgmt") &&
+        subject.user == "burak-alpine" && subject.local && subject.active)
+        return polkit.Result.YES;
+});

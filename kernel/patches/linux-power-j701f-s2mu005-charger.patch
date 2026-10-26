@@ -1,0 +1,547 @@
+From: Claude <noreply@anthropic.com>
+Subject: power: supply: S2MU005 charger status, current limits and flashlight LEDs (J701F local)
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+Register meanings from the vendor 3.18 s2mu005_charger.c/.h (see
+build/kernel/vendor-charger-reference/SOURCE.txt).
+---
+--- a/drivers/power/supply/Makefile
++++ b/drivers/power/supply/Makefile
+@@ -41,6 +41,8 @@
+ obj-$(CONFIG_BATTERY_OLPC)	+= olpc_battery.o
+ obj-$(CONFIG_BATTERY_SAMSUNG_SDI)	+= samsung-sdi-battery.o
+ obj-$(CONFIG_BATTERY_S2MU005)	+= s2mu005-battery.o
++# J701F local, always a module so that it is loaded by hand
++obj-m				+= j701f-s2mu005-charger.o
+ obj-$(CONFIG_BATTERY_COLLIE)	+= collie_battery.o
+ obj-$(CONFIG_BATTERY_INGENIC)	+= ingenic-battery.o
+ obj-$(CONFIG_BATTERY_INTEL_DC_TI) += intel_dc_ti_battery.o
+--- /dev/null
++++ b/drivers/power/supply/j701f-s2mu005-charger.c
+@@ -0,0 +1,526 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * S2MU005 charger status and current limits for the SM-J701F.
++ *
++ * Written by Claude 2026-10-10 for the J701F project. Register and bit
++ * meanings are taken from the vendor 3.18 drivers/battery_v2/s2mu005_charger.c
++ * and s2mu005_charger.h (Samsung Electronics, GPL-2.0). Not an upstream driver.
++ *
++ * The charger part of the S2MU005 keeps charging the battery with the settings
++ * the bootloader left. This driver reports what the chip is doing (cable
++ * present, charging state, health, the current limits in force) as a power
++ * supply, so the desktop can show "plugged in" and "charging". The cable type
++ * (computer port, charging port, wall charger) comes from the MUIC's detection
++ * result in the same chip.
++ *
++ * Current limits (added 2026-10-13): the bootloader's limits are those for a
++ * computer port (input 500 mA, charge 450 mA) and nothing raised them, so a
++ * wall charger filled the 3000 mAh battery no faster than a computer. The
++ * poll now sets the two limits by cable type: wall charger (DCP)
++ * dcp_input_ma/dcp_charge_ma, charging port (CDP) 1000/1000 mA as the vendor
++ * does, anything else the values found at probe. The DCP defaults (1200 mA in,
++ * 1000 mA into the battery) are deliberately below the vendor's 1550/2150 mA:
++ * the vendor lowers the current when the battery is cold or hot, and this
++ * port does not read the battery thermistor yet. Float voltage, top-off and
++ * everything else stay as the bootloader left them. Both limits can also be
++ * written through sysfs (bounded to 1550 mA in, 1500 mA charge); a written
++ * value holds until the cable type changes. auto_limits=0 turns the policy
++ * off.
++ *
++ * Charging can be switched off and on through the standard charge_behaviour
++ * property ("inhibit-charge" / "auto"): the chip's mode field goes from
++ * "buck and charger" to "buck only", as the vendor does when the battery is
++ * too hot or too cold - the phone keeps running from the cable and the
++ * battery rests. The bootloader switches charging on again at every boot.
++ *
++ * The same I2C device also contains the USB switch (MUIC). The initramfs
++ * programs it from user space so that USB works before any module is loaded;
++ * this driver checks the two registers at probe and rewrites them if they do
++ * not hold the USB path (the values measured under the vendor kernel), so the
++ * path is also restored if something has changed it.
++ *
++ * Flashlight (added 2026-10-10): the chip's two LED current sinks, channel 1
++ * for the rear flash LED and channel 2 for the front one, as two LED class
++ * devices in torch mode only. Registers and the order of writes follow the
++ * vendor drivers/leds/leds-s2mu005.c (see
++ * build/kernel/vendor-fled-reference/SOURCE.txt), with the enable bits driven
++ * over I2C instead of the two enable pins. Currents are capped well below the
++ * vendor's limits: rear 25..150 mA (vendor default torch 75 mA), front
++ * 25..50 mA (vendor 50 mA). Photo-flash mode is not implemented.
++ */
++#include <linux/i2c.h>
++#include <linux/leds.h>
++#include <linux/minmax.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/power_supply.h>
++#include <linux/regmap.h>
++#include <linux/workqueue.h>
++
++#define CHG_STATUS0		0x08
++#define  STATUS0_VBUS_OK	BIT(7)
++#define  STATUS0_STATE		GENMASK(3, 0)
++#define CHG_STATUS1		0x09
++#define  STATUS1_HEALTH		GENMASK(6, 4)
++#define CHG_CTRL0		0x0e
++#define  CTRL0_MODE		GENMASK(2, 0)
++#define  CTRL0_MODE_BUCK	1	/* the phone runs from the cable, the battery is not charged */
++#define  CTRL0_MODE_CHARGE	2
++#define CHG_CTRL2		0x10
++#define  CTRL2_INPUT_LIMIT	GENMASK(5, 0)
++#define CHG_CTRL7		0x15
++#define  CTRL7_FAST_CURRENT	GENMASK(5, 0)
++
++/* MUIC: manual switch control, D+/D- routed to the SoC's USB (vendor values) */
++#define MUIC_CTRL1		0xb2
++#define  MUIC_CTRL1_USB		0x13
++#define MUIC_SW_CTRL		0xb5
++#define  MUIC_SW_CTRL_USB	0x24
++
++/* MUIC cable detection result (vendor DEV_TYPE1 bits) */
++#define MUIC_DEV_TYPE1		0x4a
++#define  DEV_TYPE1_DCP		BIT(6)
++#define  DEV_TYPE1_CDP		BIT(5)
++#define  DEV_TYPE1_USB		BIT(2)
++
++#define POLL_MS			5000
++#define INPUT_MAX_MA		1550
++#define CHARGE_MAX_MA		1500
++
++/* Flash LED block */
++#define FLED_CH1_CTRL1		0x2f	/* [3:0] torch current of channel 1, 25 mA steps from 25 mA */
++#define FLED_CH2_CTRL1		0x33	/* the same for channel 2 */
++#define  FLED_TORCH_IOUT	GENMASK(3, 0)
++#define FLED_CTRL1		0x37
++#define  FLED_CTRL1_TA_TORCH	BIT(7)	/* vendor sets it for torch while a charger is attached */
++#define  FLED_CTRL1_BOOST_EN	BIT(6)
++#define FLED_CTRL2		0x38
++#define  FLED_CTRL2_SHARE	BIT(7)	/* 0: the two channels are controlled independently */
++#define  FLED_CTRL2_BOOST_VOUT	GENMASK(4, 0)	/* 0x0a = 4.5 V */
++#define FLED_EN_EVT0		0x3a	/* enable register on revision 0 */
++#define FLED_EN_EVT1		0x3c	/* ... and on later revisions */
++#define  FLED_EN_CH1_TORCH	GENMASK(5, 4)
++#define  FLED_EN_CH2_TORCH	GENMASK(1, 0)
++#define REV_ID			0x73
++
++struct j701f_charger;
++
++struct j701f_torch {
++	struct led_classdev cdev;
++	struct j701f_charger *chg;
++	unsigned int current_reg;
++	unsigned int enable_mask;
++};
++
++static bool auto_limits = true;
++module_param(auto_limits, bool, 0644);
++MODULE_PARM_DESC(auto_limits, "set the current limits by cable type");
++static unsigned int dcp_input_ma = 1200;
++module_param(dcp_input_ma, uint, 0644);
++MODULE_PARM_DESC(dcp_input_ma, "input current limit with a wall charger, mA");
++static unsigned int dcp_charge_ma = 1000;
++module_param(dcp_charge_ma, uint, 0644);
++MODULE_PARM_DESC(dcp_charge_ma, "charge current with a wall charger, mA");
++
++struct j701f_charger {
++	struct mutex fled_lock;		/* the enable register is shared by both LEDs */
++	unsigned int fled_en_reg;
++	unsigned int fled_on;		/* enable masks currently set */
++	struct j701f_torch rear, front;
++	struct regmap *regmap;
++	struct power_supply *psy;
++	struct delayed_work poll;
++	unsigned int last_status0;
++	unsigned int last_type;		/* cable type bits the limits were set for */
++	unsigned int boot_input_ma, boot_charge_ma;
++};
++
++/* Encodings as in the vendor's s2mu005_set_input_current_limit() / _fast_charging_current(). */
++static int j701f_charger_set_input(struct j701f_charger *chg, unsigned int ma)
++{
++	ma = clamp(ma, 100U, (unsigned int)INPUT_MAX_MA);
++	return regmap_update_bits(chg->regmap, CHG_CTRL2, CTRL2_INPUT_LIMIT, (ma - 100) / 50);
++}
++
++static int j701f_charger_set_charge(struct j701f_charger *chg, unsigned int ma)
++{
++	ma = clamp(ma, 100U, (unsigned int)CHARGE_MAX_MA);
++	return regmap_update_bits(chg->regmap, CHG_CTRL7, CTRL7_FAST_CURRENT,
++				  (ma - 100) / 50 + 1);
++}
++
++static unsigned int j701f_charger_input_ma(unsigned int reg)
++{
++	return (reg & CTRL2_INPUT_LIMIT) * 50 + 100;
++}
++
++static unsigned int j701f_charger_charge_ma(unsigned int reg)
++{
++	reg &= CTRL7_FAST_CURRENT;
++	return reg ? (reg - 1) * 50 + 100 : 0;
++}
++
++static int j701f_charger_get(struct power_supply *psy, enum power_supply_property psp,
++			     union power_supply_propval *val)
++{
++	struct j701f_charger *chg = power_supply_get_drvdata(psy);
++	unsigned int reg, state;
++	int ret;
++
++	switch (psp) {
++	case POWER_SUPPLY_PROP_ONLINE:
++	case POWER_SUPPLY_PROP_STATUS:
++	case POWER_SUPPLY_PROP_CHARGE_TYPE:
++		ret = regmap_read(chg->regmap, CHG_STATUS0, &reg);
++		if (ret)
++			return ret;
++		state = reg & STATUS0_STATE;
++		if (psp == POWER_SUPPLY_PROP_ONLINE) {
++			val->intval = !!(reg & STATUS0_VBUS_OK);
++		} else if (psp == POWER_SUPPLY_PROP_STATUS) {
++			/* vendor: 0 off, 2 pre, 3 cool, 4 CC, 5 CV, 6 done flag, 7 top-off, 8 done */
++			if (state >= 2 && state <= 5)
++				val->intval = POWER_SUPPLY_STATUS_CHARGING;
++			else if (state >= 6 && state <= 8)
++				val->intval = POWER_SUPPLY_STATUS_FULL;
++			else if (reg & STATUS0_VBUS_OK)
++				val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
++			else
++				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
++		} else {
++			if (state == 2)
++				val->intval = POWER_SUPPLY_CHARGE_TYPE_TRICKLE;
++			else if (state >= 3 && state <= 5)
++				val->intval = POWER_SUPPLY_CHARGE_TYPE_FAST;
++			else
++				val->intval = POWER_SUPPLY_CHARGE_TYPE_NONE;
++		}
++		return 0;
++	case POWER_SUPPLY_PROP_USB_TYPE:
++		ret = regmap_read(chg->regmap, MUIC_DEV_TYPE1, &reg);
++		if (ret)
++			return ret;
++		if (reg & DEV_TYPE1_DCP)
++			val->intval = POWER_SUPPLY_USB_TYPE_DCP;
++		else if (reg & DEV_TYPE1_CDP)
++			val->intval = POWER_SUPPLY_USB_TYPE_CDP;
++		else if (reg & DEV_TYPE1_USB)
++			val->intval = POWER_SUPPLY_USB_TYPE_SDP;
++		else
++			val->intval = POWER_SUPPLY_USB_TYPE_UNKNOWN;
++		return 0;
++	case POWER_SUPPLY_PROP_HEALTH:
++		ret = regmap_read(chg->regmap, CHG_STATUS1, &reg);
++		if (ret)
++			return ret;
++		state = (reg & STATUS1_HEALTH) >> 4;
++		/* the vendor driver treats 3 and 5 as good and everything else as a fault */
++		val->intval = (state == 3 || state == 5) ? POWER_SUPPLY_HEALTH_GOOD :
++			      POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
++		return 0;
++	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
++		ret = regmap_read(chg->regmap, CHG_CTRL2, &reg);
++		if (ret)
++			return ret;
++		val->intval = j701f_charger_input_ma(reg) * 1000;
++		return 0;
++	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
++		ret = regmap_read(chg->regmap, CHG_CTRL7, &reg);
++		if (ret)
++			return ret;
++		val->intval = j701f_charger_charge_ma(reg) * 1000;
++		return 0;
++	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
++		ret = regmap_read(chg->regmap, CHG_CTRL0, &reg);
++		if (ret)
++			return ret;
++		val->intval = (reg & CTRL0_MODE) == CTRL0_MODE_CHARGE ?
++			      POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO :
++			      POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int j701f_charger_set(struct power_supply *psy, enum power_supply_property psp,
++			     const union power_supply_propval *val)
++{
++	struct j701f_charger *chg = power_supply_get_drvdata(psy);
++	int ret;
++
++	if (val->intval < 0)
++		return -EINVAL;
++	switch (psp) {
++	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
++		return j701f_charger_set_input(chg, val->intval / 1000);
++	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
++		return j701f_charger_set_charge(chg, val->intval / 1000);
++	case POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR:
++		if (val->intval != POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO &&
++		    val->intval != POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE)
++			return -EINVAL;
++		/* The vendor passes through "buck only" on the way to charging as well. */
++		ret = regmap_update_bits(chg->regmap, CHG_CTRL0, CTRL0_MODE, CTRL0_MODE_BUCK);
++		if (ret || val->intval == POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE)
++			return ret;
++		return regmap_update_bits(chg->regmap, CHG_CTRL0, CTRL0_MODE, CTRL0_MODE_CHARGE);
++	default:
++		return -EINVAL;
++	}
++}
++
++static int j701f_charger_writeable(struct power_supply *psy, enum power_supply_property psp)
++{
++	return psp == POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT ||
++	       psp == POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT ||
++	       psp == POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR;
++}
++
++static const enum power_supply_property j701f_charger_props[] = {
++	POWER_SUPPLY_PROP_ONLINE,
++	POWER_SUPPLY_PROP_STATUS,
++	POWER_SUPPLY_PROP_CHARGE_TYPE,
++	POWER_SUPPLY_PROP_HEALTH,
++	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
++	POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT,
++	POWER_SUPPLY_PROP_USB_TYPE,
++	POWER_SUPPLY_PROP_CHARGE_BEHAVIOUR,
++};
++
++static const struct power_supply_desc j701f_charger_desc = {
++	.name = "s2mu005-charger",
++	.type = POWER_SUPPLY_TYPE_USB,
++	.usb_types = BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN) | BIT(POWER_SUPPLY_USB_TYPE_SDP) |
++		     BIT(POWER_SUPPLY_USB_TYPE_CDP) | BIT(POWER_SUPPLY_USB_TYPE_DCP),
++	.charge_behaviours = BIT(POWER_SUPPLY_CHARGE_BEHAVIOUR_AUTO) |
++			     BIT(POWER_SUPPLY_CHARGE_BEHAVIOUR_INHIBIT_CHARGE),
++	.properties = j701f_charger_props,
++	.num_properties = ARRAY_SIZE(j701f_charger_props),
++	.get_property = j701f_charger_get,
++	.set_property = j701f_charger_set,
++	.property_is_writeable = j701f_charger_writeable,
++};
++
++/* Called from the poll: new limits whenever the detected cable type changes. */
++static void j701f_charger_limits(struct j701f_charger *chg, unsigned int status0)
++{
++	unsigned int type = 0, input, charge;
++
++	if (!auto_limits)
++		return;
++	if ((status0 & STATUS0_VBUS_OK) && regmap_read(chg->regmap, MUIC_DEV_TYPE1, &type))
++		return;
++	type &= DEV_TYPE1_DCP | DEV_TYPE1_CDP | DEV_TYPE1_USB;
++	if (type == chg->last_type)
++		return;
++	chg->last_type = type;
++	if (type & DEV_TYPE1_DCP) {
++		input = dcp_input_ma;
++		charge = dcp_charge_ma;
++	} else if (type & DEV_TYPE1_CDP) {
++		input = 1000;
++		charge = 1000;
++	} else {
++		input = chg->boot_input_ma;
++		charge = chg->boot_charge_ma;
++	}
++	/* Going down: battery current first; going up: input first. */
++	j701f_charger_set_charge(chg, min(charge, chg->boot_charge_ma));
++	j701f_charger_set_input(chg, input);
++	j701f_charger_set_charge(chg, charge);
++	dev_info(&chg->psy->dev, "cable type %#x: input limit %u mA, charge current %u mA\n",
++		 type, min(input, (unsigned int)INPUT_MAX_MA),
++		 min(charge, (unsigned int)CHARGE_MAX_MA));
++}
++
++/* No interrupt is wired up yet: notice plug/unplug and state changes by polling. */
++static void j701f_charger_poll(struct work_struct *work)
++{
++	struct j701f_charger *chg = container_of(work, struct j701f_charger, poll.work);
++	unsigned int reg;
++
++	if (!regmap_read(chg->regmap, CHG_STATUS0, &reg)) {
++		j701f_charger_limits(chg, reg);
++		if (reg != chg->last_status0) {
++			chg->last_status0 = reg;
++			power_supply_changed(chg->psy);
++		}
++	}
++	queue_delayed_work(system_freezable_wq, &chg->poll, msecs_to_jiffies(POLL_MS));
++}
++
++static int j701f_torch_set(struct led_classdev *cdev, enum led_brightness value)
++{
++	struct j701f_torch *t = container_of(cdev, struct j701f_torch, cdev);
++	struct j701f_charger *chg = t->chg;
++	unsigned int status = 0;
++	int ret;
++
++	mutex_lock(&chg->fled_lock);
++	if (value) {
++		ret = regmap_update_bits(chg->regmap, t->current_reg, FLED_TORCH_IOUT, value - 1);
++		if (ret)
++			goto out;
++		/* vendor "torch mode on sequence" with a charger attached */
++		regmap_read(chg->regmap, CHG_STATUS0, &status);
++		if (status & STATUS0_VBUS_OK)
++			regmap_update_bits(chg->regmap, FLED_CTRL1, FLED_CTRL1_TA_TORCH,
++					   FLED_CTRL1_TA_TORCH);
++		ret = regmap_update_bits(chg->regmap, chg->fled_en_reg, t->enable_mask,
++					 t->enable_mask);
++		if (!ret)
++			chg->fled_on |= t->enable_mask;
++	} else {
++		ret = regmap_update_bits(chg->regmap, chg->fled_en_reg, t->enable_mask, 0);
++		chg->fled_on &= ~t->enable_mask;
++		if (!chg->fled_on)
++			regmap_update_bits(chg->regmap, FLED_CTRL1, FLED_CTRL1_TA_TORCH, 0);
++	}
++out:
++	mutex_unlock(&chg->fled_lock);
++	return ret;
++}
++
++static int j701f_torch_register(struct device *dev, struct j701f_charger *chg,
++				struct j701f_torch *t, const char *name,
++				unsigned int current_reg, unsigned int enable_mask,
++				unsigned int steps)
++{
++	t->chg = chg;
++	t->current_reg = current_reg;
++	t->enable_mask = enable_mask;
++	t->cdev.name = name;
++	t->cdev.max_brightness = steps;		/* 25 mA per step */
++	t->cdev.brightness_set_blocking = j701f_torch_set;
++	t->cdev.flags = LED_CORE_SUSPENDRESUME;	/* off across suspend */
++	return devm_led_classdev_register(dev, &t->cdev);
++}
++
++static int j701f_fled_init(struct device *dev, struct j701f_charger *chg)
++{
++	unsigned int rev = 0;
++	int ret;
++
++	mutex_init(&chg->fled_lock);
++	ret = regmap_read(chg->regmap, REV_ID, &rev);
++	if (ret)
++		return ret;
++	chg->fled_en_reg = (rev & 0xf) ? FLED_EN_EVT1 : FLED_EN_EVT0;
++	/* both off, then the vendor's setup: independent channels, 4.5 V boost, boost on */
++	ret = regmap_update_bits(chg->regmap, chg->fled_en_reg,
++				 FLED_EN_CH1_TORCH | FLED_EN_CH2_TORCH, 0);
++	if (ret)
++		return ret;
++	regmap_update_bits(chg->regmap, FLED_CTRL2, FLED_CTRL2_SHARE | FLED_CTRL2_BOOST_VOUT, 0x0a);
++	regmap_update_bits(chg->regmap, FLED_CTRL1, FLED_CTRL1_BOOST_EN, FLED_CTRL1_BOOST_EN);
++	ret = j701f_torch_register(dev, chg, &chg->rear, "white:flash",
++				   FLED_CH1_CTRL1, FLED_EN_CH1_TORCH, 6);
++	if (ret)
++		return ret;
++	ret = j701f_torch_register(dev, chg, &chg->front, "white:front-flash",
++				   FLED_CH2_CTRL1, FLED_EN_CH2_TORCH, 2);
++	if (ret)
++		return ret;
++	dev_info(dev, "flash LEDs: revision %#x, enable register %#x\n", rev, chg->fled_en_reg);
++	return 0;
++}
++
++static const struct regmap_config j701f_charger_regmap = {
++	.reg_bits = 8,
++	.val_bits = 8,
++	.max_register = 0xff,
++};
++
++static int j701f_charger_probe(struct i2c_client *i2c)
++{
++	struct device *dev = &i2c->dev;
++	struct power_supply_config cfg = { };
++	struct j701f_charger *chg;
++	unsigned int reg;
++	int ret;
++
++	chg = devm_kzalloc(dev, sizeof(*chg), GFP_KERNEL);
++	if (!chg)
++		return -ENOMEM;
++	chg->regmap = devm_regmap_init_i2c(i2c, &j701f_charger_regmap);
++	if (IS_ERR(chg->regmap))
++		return PTR_ERR(chg->regmap);
++	ret = regmap_read(chg->regmap, CHG_STATUS0, &reg);
++	if (ret)
++		return dev_err_probe(dev, ret, "charger does not answer\n");
++	chg->last_status0 = reg;
++
++	{
++		unsigned int ctrl1 = 0, sw = 0;
++
++		regmap_read(chg->regmap, MUIC_CTRL1, &ctrl1);
++		regmap_read(chg->regmap, MUIC_SW_CTRL, &sw);
++		if (ctrl1 != MUIC_CTRL1_USB || sw != MUIC_SW_CTRL_USB) {
++			regmap_write(chg->regmap, MUIC_CTRL1, MUIC_CTRL1_USB);
++			regmap_write(chg->regmap, MUIC_SW_CTRL, MUIC_SW_CTRL_USB);
++			dev_info(dev, "MUIC was %#x/%#x, USB path restored\n", ctrl1, sw);
++		} else {
++			dev_info(dev, "MUIC already on the USB path (%#x/%#x)\n", ctrl1, sw);
++		}
++	}
++
++	cfg.drv_data = chg;
++	cfg.fwnode = dev_fwnode(dev);
++	chg->psy = devm_power_supply_register(dev, &j701f_charger_desc, &cfg);
++	if (IS_ERR(chg->psy))
++		return PTR_ERR(chg->psy);
++
++	/* The flashlight is an extra: the charger status must not depend on it. */
++	ret = j701f_fled_init(dev, chg);
++	if (ret)
++		dev_warn(dev, "flash LEDs not available: %d\n", ret);
++
++	/*
++	 * What the bootloader set is what a computer port gets. Should the module
++	 * be loaded again while a charger has the limits raised, do not take the
++	 * raised values for that.
++	 */
++	chg->boot_input_ma = 500;
++	chg->boot_charge_ma = 450;
++	if (!regmap_read(chg->regmap, CHG_CTRL2, &reg) && j701f_charger_input_ma(reg) < 500)
++		chg->boot_input_ma = j701f_charger_input_ma(reg);
++	if (!regmap_read(chg->regmap, CHG_CTRL7, &reg) && j701f_charger_charge_ma(reg) &&
++	    j701f_charger_charge_ma(reg) < 450)
++		chg->boot_charge_ma = j701f_charger_charge_ma(reg);
++	chg->last_type = ~0U;
++
++	i2c_set_clientdata(i2c, chg);
++	INIT_DELAYED_WORK(&chg->poll, j701f_charger_poll);
++	queue_delayed_work(system_freezable_wq, &chg->poll, msecs_to_jiffies(POLL_MS));
++	dev_info(dev, "S2MU005 charger: limits for a computer port %u/%u mA, by cable type %s\n",
++		 chg->boot_input_ma, chg->boot_charge_ma, auto_limits ? "on" : "off");
++	return 0;
++}
++
++static void j701f_charger_remove(struct i2c_client *i2c)
++{
++	struct j701f_charger *chg = i2c_get_clientdata(i2c);
++
++	cancel_delayed_work_sync(&chg->poll);
++}
++
++static const struct of_device_id j701f_charger_match[] = {
++	{ .compatible = "j701f,s2mu005-charger" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, j701f_charger_match);
++
++static struct i2c_driver j701f_charger_driver = {
++	.driver = {
++		.name = "j701f-s2mu005-charger",
++		.of_match_table = j701f_charger_match,
++	},
++	.probe = j701f_charger_probe,
++	.remove = j701f_charger_remove,
++};
++module_i2c_driver(j701f_charger_driver);
++
++MODULE_DESCRIPTION("S2MU005 charger status (read only) and flashlight LEDs (SM-J701F local)");
++MODULE_LICENSE("GPL");

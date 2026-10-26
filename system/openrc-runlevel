@@ -1,0 +1,15 @@
+#!/bin/sh
+# Written by Claude 2026-10-08. Installed as /sbin/j701f-openrc and called from
+# /etc/inittab. Runs an OpenRC runlevel on the mainline kernel only; the vendor
+# 3.18 boot (fallback in RECOVERY) stays on the plain BusyBox-init path. A time
+# limit keeps a stuck service from blocking the supervised USB/SSH/Wi-Fi entries.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+case "$(uname -r)" in 3.18.*) exit 0 ;; esac
+[ -x /sbin/openrc ] || exit 0
+level=${1:?runlevel}
+limit=60
+[ "$level" != shutdown ] || limit=30
+timeout "$limit" /sbin/openrc "$level" > "/run/j701f-openrc-$level.log" 2>&1
+status=$?
+printf 'openrc %s exit=%s\n' "$level" "$status" >> /tmp/boot.log 2>/dev/null
+exit 0

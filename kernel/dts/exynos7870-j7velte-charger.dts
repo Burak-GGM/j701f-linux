@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-10. Bluetooth tree plus a node for the charger
+ * part of the S2MU005 (I2C 0x3d on i2c4, the same device that holds the USB
+ * switch). The driver is the local read-only status driver
+ * (kernel/patches/linux-power-j701f-s2mu005-charger.patch), a module that is
+ * loaded by hand; it changes no charger setting.
+ */
+#include "exynos7870-j7velte-bt.dts"
+
+&i2c4 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    charger@3d {
+        compatible = "j701f,s2mu005-charger";
+        reg = <0x3d>;
+    };
+};

@@ -1,0 +1,24 @@
+#!/bin/sh
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 022
+mkdir -p /run /tmp /root /dev/pts
+chmod 1777 /tmp
+# Claude 2026-10-09: /tmp arrives as a 16 MB tmpfs; Firefox keeps its media cache there.
+mount -o remount,size=256m /tmp 2>/dev/null
+if ! awk '$2 == "/run" && $3 == "tmpfs" {found=1} END {exit !found}' /proc/mounts; then
+    mount -t tmpfs -o nosuid,nodev,mode=0755,size=8m tmpfs /run || exit 1
+fi
+hostname burak-linux
+printf 'Alpine %s started as PID 1 on %s\n' "$(cat /etc/alpine-release)" "$(uname -r)" > /tmp/boot.log
+# Claude 2026-10-08: on the mainline kernel OpenRC (see /sbin/j701f-openrc and
+# /etc/inittab) starts udev, D-Bus and the seat daemon. Only the pieces OpenRC
+# does not provide remain here. The vendor 3.18 boot is unchanged.
+case "$(uname -r)" in
+3.18.*) ;;
+*)
+    mkdir -p /run/user/1000 && chown 1000:1000 /run/user/1000 && chmod 700 /run/user/1000
+    # KWin's Xwayland needs this socket directory; Plasma's ksmserver needs Xwayland.
+    mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+    ;;
+esac
+printf '%s\n' 'ALPINE_PID1_START_READY' > /etc/j701f-start-result

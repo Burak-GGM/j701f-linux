@@ -1,0 +1,41 @@
+{
+  "baseline": {
+    "repository": "https://github.com/samsungexynos7870/android_kernel_samsung_exynos7870",
+    "ref": "SIMPLE-V1.0-PERMISSIVE",
+    "commit": "29223d295a58ebe82e95347c8eb8468ea2b1c336",
+    "archive": "simple-29223d295a58ebe82e95347c8eb8468ea2b1c336.tar.gz",
+    "directory": "android_kernel_samsung_exynos7870-29223d295a58ebe82e95347c8eb8468ea2b1c336",
+    "url": "https://codeload.github.com/samsungexynos7870/android_kernel_samsung_exynos7870/tar.gz/29223d295a58ebe82e95347c8eb8468ea2b1c336",
+    "sha256": "b3b4414ed7b2cd5d87f6bc4b6b9ab21b4b4a4d3a4c80c63b673f9718180f2b65",
+    "config_sha256": "34761623249f621919fc9f15ce57fa4c1143bf7976e64bb9242532dbf2813eb1"
+  },
+  "panfrost": {
+    "repository": "https://cdn.kernel.org/pub/linux/kernel/v7.x/",
+    "ref": "v7.1.13 stable + exynos7870-mainline exynos7870/7.1 patches (kernel/patches/exynos7870-7.1) + local mip4 patches",
+    "commit": "v7.1.13",
+    "archive": "linux-7.1.13.tar.xz",
+    "directory": "linux-7.1.13",
+    "url": "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.13.tar.xz",
+    "sha256": "614d95fafdcb5cce2b6620e7edc6afbb606bffd4655405586815d84687841ad7",
+    "patches": [
+      "exynos7870-7.1/*.patch",
+      "linux-*.patch"
+    ],
+    "resolved_config_sha256": "47f059cab9f39f9e14cbb474f3e3f6af16d00206c0ec31549b0be396014d43ca",
+    "note": "Claude 2026-10-09: 7.1 migration base. Checksum from kernel.org sha256sums.asc; signature not verified. 2026-10-17: HID gadget enabled; host lld23/rustc1.99 metadata also changes the resolved config; the semantic delta against the prior config was reviewed. 2026-10-18: basic BT_LE enabled (ECRED disabled), HID retained; exact .config diff reviewed."
+  },
+  "panfrost-6.15": {
+    "repository": "https://gitlab.com/exynos7870-mainline/linux",
+    "ref": "exynos7870/6.15",
+    "commit": "9186b039cf245886b25e4395b1bb20f0d3c03948",
+    "archive": "exynos7870-mainline-9186b039cf245886b25e4395b1bb20f0d3c03948.tar.gz",
+    "directory": "linux-9186b039cf245886b25e4395b1bb20f0d3c03948",
+    "url": "https://gitlab.com/exynos7870-mainline/linux/-/archive/9186b039cf245886b25e4395b1bb20f0d3c03948/linux-9186b039cf245886b25e4395b1bb20f0d3c03948.tar.gz",
+    "sha256": "1a38b5347b981070027fa296869bf76f671172405c3f85b6122f057a6dc8fa6e",
+    "resolved_config_sha256": "24b24df5ed1a28cb3859fc892f57cd34022a64697f7bed96f37859a221fe3dc0",
+    "note": "Claude 2026-10-09: superseded 6.15 base; artifacts of the last build are kept in build/kernel/panfrost-6.15.",
+    "patches": [
+      "linux-*.patch"
+    ]
+  }
+}

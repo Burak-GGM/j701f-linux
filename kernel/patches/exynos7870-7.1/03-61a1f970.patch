@@ -1,0 +1,44 @@
+From 61a1f970de6d51410ff126d18ac2521d3c69aa30 Mon Sep 17 00:00:00 2001
+From: Kaustabh Chakraborty <kauschluss@disroot.org>
+Date: Sun, 22 Mar 2026 22:32:06 +0530
+Subject: [PATCH] FROMLIST: drm/bridge: samsung-dsim: enable MFLUSH_VS for
+ Exynos 7870 DSIM
+
+Commit a36c533ad3e1 ("drm/bridge: samsung-dsim: Always flush display
+FIFO on vsync pulse") intends to enable FIFO flushing at v-sync pulse by
+not setting the active-low MFLUSH_VS bit.
+
+However, in Exynos 7870 DSIM, the MFLUSH_VS bit is active-high. There is
+no publicly available documentation to the best of my knowledge, but
+downstream kernel code [1] supports this claim. Enable the bit for
+Exynos 7870.
+
+Cc: stable@vger.kernel.org # v6.17 and later
+Link: https://github.com/samsungexynos7870/android_kernel_samsung_exynos7870/blob/a3762bb1761ae/drivers/video/fbdev/exynos/decon_7870/dsim_reg_7870.c#L699 [1]
+Tested-by: Marek Szyprowski <m.szyprowski@samsung.com>
+Signed-off-by: Kaustabh Chakraborty <kauschluss@disroot.org>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index c3eb437ef1b0..67b50bb64d5e 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -1089,6 +1089,13 @@ static int samsung_dsim_init_link(struct samsung_dsim *dsi)
+ 			reg |= DSIM_HBP_DISABLE_MODE;
+ 		if (dsi->mode_flags & MIPI_DSI_MODE_VIDEO_NO_HSA)
+ 			reg |= DSIM_HSA_DISABLE_MODE;
++
++		/*
++		 * For some hardware types, DSIM_MFLUSH_VS bit needs to be
++		 * enabled explicitly.
++		 */
++		if (dsi->plat_data->hw_type == DSIM_TYPE_EXYNOS7870)
++			reg |= DSIM_MFLUSH_VS;
+ 	}
+ 
+ 	if (dsi->mode_flags & MIPI_DSI_MODE_NO_EOT_PACKET)
+-- 
+GitLab
+

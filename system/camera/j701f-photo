@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+# Written by Claude 2026-10-10 (goal: a working camera). Takes one photograph on
+# the phone and prints the name of the JPEG file. Run as root (it loads a kernel
+# module and reads debugfs):   sudo j701f-photo [rear|front] [OUTPUT.jpg]
+#
+# How: tools/kmod/j701f_cam_frame.c is loaded once per exposure; each load powers
+# the sensor, records about half a second of frames into one buffer and powers
+# everything down. Two or three loads find the exposure (there is no automatic
+# exposure in the sensor path), the last buffer is turned into a picture here:
+# unpack the 12-bit packing, bilinear demosaic, grey-world white balance, gamma.
+# This is a still camera without preview, focus control or the sensors' full
+# resolution - see the wiki page "Camera".
+import os, subprocess, sys, time
+import numpy as np
+from PIL import Image
+
+KO = '/home/burak-alpine/j701f/modules/camera/j701f_cam_frame.ko'
+DBG = '/sys/kernel/debug/j701f_cam'
+SENSORS = {  # width, height, longest exposure in lines, Bayer order
+    'rear': (2072, 1552, 3160, 'GRBG'),
+    'front': (1280, 960, 2015, 'GRBG'),
+}
+BLACK = 64
+
+
+def capture(which, exposure, gain):
+    w, h = SENSORS[which][:2]
+    # the streaming test module binds the same devices; with it loaded this one
+    # finds nothing to capture from (the owner got a FileNotFoundError that way)
+    subprocess.run(['rmmod', 'j701f_cam_stream'], stderr=subprocess.DEVNULL)
+    subprocess.run(['rmmod', 'j701f_cam_frame'], stderr=subprocess.DEVNULL)
+    subprocess.run(['insmod', KO, 'only=' + which, 'exposure_lines=%d' % exposure,
+                    'analog_gain=%d' % gain], check=True)
+    status = open('%s/%s/status' % (DBG, which)).read()
+    fields = dict(item.split('=', 1) for item in status.split() if '=' in item)
+    errors = int(fields['int_src0'], 16) & 0x000fffff
+    if int(fields.get('frame_count', '0')) == 0 or errors:
+        raise SystemExit('no clean frame from the %s sensor: %s' % (which, status.strip()))
+    line = (w + 15) // 16 * 16 * 3 // 2
+    raw = np.frombuffer(open('%s/%s/frame' % (DBG, which), 'rb').read(line * h), dtype=np.uint8)
+    d = raw.reshape(h, line)
+    a, b, c = (d[:, i::3].astype(np.uint16) for i in range(3))
+    img = np.empty((h, 2 * a.shape[1]), dtype=np.uint16)
+    img[:, 0::2] = a | ((b & 0x0f) << 8)
+    img[:, 1::2] = (b >> 4) | (c << 4)
+    return img[:, :w].astype(np.float32)
+
+
+def demosaic(raw, pattern):
+    """Bilinear: every colour plane is filled from its neighbours of that colour."""
+    h, w = raw.shape
+    out = np.zeros((h, w, 3), dtype=np.float32)
+    weight = np.zeros((h, w, 3), dtype=np.float32)
+    for i, colour in enumerate(pattern):
+        ch = 'RGB'.index(colour)
+        out[i // 2::2, i % 2::2, ch] = raw[i // 2::2, i % 2::2]
+        weight[i // 2::2, i % 2::2, ch] = 1
+    def blur(x):
+        p = np.pad(x, ((1, 1), (1, 1), (0, 0)), mode='reflect')
+        return (p[:-2, :-2] + p[:-2, 2:] + p[2:, :-2] + p[2:, 2:] +
+                2 * (p[:-2, 1:-1] + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:]) + 4 * p[1:-1, 1:-1])
+    return blur(out) / np.maximum(blur(weight), 1e-6)
+
+
+def main():
+    which = sys.argv[1] if len(sys.argv) > 1 else 'rear'
+    if which not in SENSORS:
+        raise SystemExit('usage: j701f-photo [rear|front] [OUTPUT.jpg]')
+    w, h, max_lines, pattern = SENSORS[which]
+    subprocess.run(['rmmod', 'j701f_cam0_off'], stderr=subprocess.DEVNULL)   # camera block power on
+    exposure, gain = 600, 64                       # 64 = 2x
+    for attempt in range(3):
+        raw = capture(which, exposure, gain)
+        level = float(np.percentile(raw[::4, ::4], 90)) - BLACK      # bright parts of the scene
+        if 300 <= level <= 700 or attempt == 2:
+            break
+        total = exposure * gain * 500.0 / max(level, 2.0)            # aim the bright parts at mid-scale
+        exposure = int(min(max_lines, max(8, total / 32)))
+        gain = int(min(512, max(32, total / exposure)))
+    subprocess.run(['rmmod', 'j701f_cam_frame'], stderr=subprocess.DEVNULL)
+    rgb = demosaic(np.clip(raw - BLACK, 0, None), pattern)
+    means = rgb[::4, ::4].reshape(-1, 3).mean(axis=0)
+    rgb *= np.clip(means[1] / np.maximum(means, 1e-3), 0.4, 3.0)
+    # No colour matrix for these sensors is known here, and raw sensor colours are
+    # pale: push every pixel away from its own grey value (saturation x1.6).
+    grey = rgb.mean(axis=2, keepdims=True)
+    rgb = np.clip(grey + 1.6 * (rgb - grey), 0, None)
+    top = max(float(np.percentile(rgb[::4, ::4], 99.7)), 1.0)
+    picture = (np.clip(rgb / top, 0, 1) ** (1 / 2.2) * 255).astype(np.uint8)
+    out = sys.argv[2] if len(sys.argv) > 2 else None
+    if not out:
+        folder = '/home/burak-alpine/Pictures/Camera'
+        os.makedirs(folder, exist_ok=True)
+        os.chown(folder, 1000, 1000)
+        out = '%s/IMG_%s_%s.jpg' % (folder, time.strftime('%Y%m%d_%H%M%S'), which)
+    Image.fromarray(picture).save(out, quality=92)
+    os.chown(out, 1000, 1000)
+    print(out)
+    print('exposure %d lines, gain %.1fx, bright level %d' % (exposure, gain / 32, level), file=sys.stderr)
+
+
+if __name__ == '__main__':
+    main()

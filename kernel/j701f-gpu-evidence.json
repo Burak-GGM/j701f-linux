@@ -1,0 +1,108 @@
+{
+  "current_clock_mhz": 0,
+  "current_microvolt": 662500,
+  "power_on": false,
+  "vendor_asv_rows": [
+    {
+      "frequency_hz": 1001000000,
+      "microvolt": 931250,
+      "vendor_mif_khz": 902000,
+      "vendor_interconnect_khz": 400000,
+      "vendor_cpu_min_khz": 1586000
+    },
+    {
+      "frequency_hz": 845000000,
+      "microvolt": 837500,
+      "vendor_mif_khz": 836000,
+      "vendor_interconnect_khz": 400000,
+      "vendor_cpu_min_khz": 1248000
+    },
+    {
+      "frequency_hz": 728000000,
+      "microvolt": 762500,
+      "vendor_mif_khz": 728000,
+      "vendor_interconnect_khz": 400000,
+      "vendor_cpu_min_khz": 1144000
+    },
+    {
+      "frequency_hz": 676000000,
+      "microvolt": 743750,
+      "vendor_mif_khz": 676000,
+      "vendor_interconnect_khz": 400000,
+      "vendor_cpu_min_khz": 902000
+    },
+    {
+      "frequency_hz": 545000000,
+      "microvolt": 681250,
+      "vendor_mif_khz": 546000,
+      "vendor_interconnect_khz": 334000,
+      "vendor_cpu_min_khz": 902000
+    },
+    {
+      "frequency_hz": 450000000,
+      "microvolt": 637500,
+      "vendor_mif_khz": 451000,
+      "vendor_interconnect_khz": 200000,
+      "vendor_cpu_min_khz": 0
+    },
+    {
+      "frequency_hz": 343000000,
+      "microvolt": 600000,
+      "vendor_mif_khz": 275000,
+      "vendor_interconnect_khz": 134000,
+      "vendor_cpu_min_khz": 0
+    }
+  ],
+  "observed_sysfs_sha256": "d9f9925f8a98f77cb39177686abfffc4c43e89e57466240b30507d0660d6122b",
+  "live_dt_capture_sha256": "04618bd4eb617ed4524ebe4de2da5a133741d00de7998698735da6e17bd31ba4",
+  "vendor_source": {
+    "repository": "https://github.com/samsungexynos7870/android_kernel_samsung_exynos7870",
+    "ref": "SIMPLE-V1.0-PERMISSIVE",
+    "commit": "29223d295a58ebe82e95347c8eb8468ea2b1c336",
+    "archive": "simple-29223d295a58ebe82e95347c8eb8468ea2b1c336.tar.gz",
+    "directory": "android_kernel_samsung_exynos7870-29223d295a58ebe82e95347c8eb8468ea2b1c336",
+    "url": "https://codeload.github.com/samsungexynos7870/android_kernel_samsung_exynos7870/tar.gz/29223d295a58ebe82e95347c8eb8468ea2b1c336",
+    "sha256": "b3b4414ed7b2cd5d87f6bc4b6b9ab21b4b4a4d3a4c80c63b673f9718180f2b65",
+    "config_sha256": "34761623249f621919fc9f15ce57fa4c1143bf7976e64bb9242532dbf2813eb1"
+  },
+  "vendor_gpu_source_sha256": "bcb1668aaf31c30b18ad99144dc7940c70a854fcd837a11d32cb9313bcfe2a2e",
+  "vendor_driver_revision": "r28p0",
+  "vendor_supply_lookup": "BUCK2",
+  "modern_supply_property": "mali-supply",
+  "proposed_regulator_label": "vdd_buck2",
+  "gpu_reg_cells": [
+    0,
+    289406976,
+    20480
+  ],
+  "gpu_interrupt_cells": [
+    0,
+    282,
+    0,
+    0,
+    283,
+    0,
+    0,
+    281,
+    0
+  ],
+  "vendor_power_domain": {
+    "node": "pd-g3d@10484000",
+    "reg_cells": [
+      0,
+      273170432,
+      32
+    ]
+  },
+  "vendor_buck2_enable_pin": "etc1-3",
+  "vendor_g3d_enable": [
+    1
+  ],
+  "limits": [
+    "This is one handset/vendor-kernel snapshot; not universal J701F OPPs.",
+    "Vendor ASV entries are observations, not a mainline voltage/frequency policy.",
+    "Voltage margins, PMIC external enable, power sequencing and memory QoS still require a port.",
+    "BUCK2 mapping is source/runtime evidence, not independent physical wiring measurement.",
+    "No mainline GPU probe, render node, acceleration or power transition was tested."
+  ]
+}

@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-10 (goal: a working camera). Framebuffer tree
+ * plus the rear camera sensor on its I2C bus, for the first milestone only:
+ * power it up in the vendor's order and read its identity.
+ *
+ * From the factory device tree (build/kernel/j701f-live.dtb) and the vendor
+ * module file (build/kernel/vendor-camera-reference/):
+ *   sensor   Samsung S5K3L2, 13 MP, I2C address 0x2d on hsi2c@138a0000
+ *   AVDD     2.8 V, PMIC LDO35 ("VDD_CAM_SENSOR_A2P8")
+ *   DVDD     1.2 V, switched by gpd4-4
+ *   IO       1.8 V, switched by gpf3-2
+ *   AF motor 2.8 V, switched by gpd1-1 (DW9807 actuator at 0x18, not used yet)
+ *   reset    gpf3-3, low = in reset
+ *   MCLK     26 MHz on gpe0-0 from the MIF "sensor 0" clock
+ * The compatible is the project's own probe driver (tools/kmod/j701f_cam_probe.c);
+ * nothing here captures an image.
+ */
+#include "exynos7870-j7velte-fbmem.dts"
+
+/ {
+    /* The 1.8 V interface supply of both sensors is one switch (gpf3-2): as a
+     * regulator it can be shared; requested as a GPIO by two devices it could
+     * not (and a "non-exclusive" request ended in a kernel oops). */
+    cam_io_1p8: regulator-cam-io-1p8 {
+        compatible = "regulator-fixed";
+        regulator-name = "CAM_IO_1P8";
+        regulator-min-microvolt = <1800000>;
+        regulator-max-microvolt = <1800000>;
+        gpio = <&gpf3 2 GPIO_ACTIVE_HIGH>;
+        enable-active-high;
+    };
+};
+
+&hsi2c1 {
+    status = "okay";
+
+    camera@2d {
+        /* j701f_camera.c; the second name lets the earlier test modules bind */
+        compatible = "j701f,s5k3l2", "j701f,s5k3l2-probe";
+        orientation = <1>;      /* back */
+        rotation = <270>;       /* 90 gave the owner upside-down photographs */
+        reg = <0x2d>;
+        /* "cam" and "isp" feed the camera block's own clock controller (cmu_isp,
+         * disabled in this tree); the frame test switches them on itself */
+        clocks = <&cmu_mif CLK_GOUT_MIF_CMU_ISP_SENSOR0>,
+                 <&cmu_mif CLK_GOUT_MIF_CMU_ISP_CAM>,
+                 <&cmu_mif CLK_GOUT_MIF_CMU_ISP_ISP>;
+        clock-names = "mclk", "cam", "isp";
+        pinctrl-names = "default";
+        pinctrl-0 = <&fimc_is_mclk0_fn>;
+        avdd-supply = <&vdd_ldo35>;
+        reset-gpios = <&gpf3 3 GPIO_ACTIVE_LOW>;
+        dvdd-gpios = <&gpd4 4 GPIO_ACTIVE_HIGH>;
+        iovdd-supply = <&cam_io_1p8>;
+        afvdd-gpios = <&gpd1 1 GPIO_ACTIVE_HIGH>;
+        /* the receiver's D-PHY (CSIS0), for the frame test (j701f_cam_frame.c) */
+        phys = <&mipi_phy 0>;
+        phy-names = "csis";
+    };
+};
+
+/* Front sensor: Samsung S5K5E3, 5 MP, I2C 0x10 on hsi2c@138c0000, two data
+ * lanes into the second receiver (0x14460000, D-PHY "CSIS1"). Same AVDD and
+ * interface-supply switch as the rear sensor; DVDD 1.2 V switched by gpf3-0;
+ * reset gpf3-1; MCLK 26 MHz on gpe0-1 from the MIF "sensor 1" clock. */
+&hsi2c3 {
+    status = "okay";
+
+    camera@10 {
+        compatible = "j701f,s5k5e3", "j701f,s5k5e3-frame";
+        orientation = <0>;      /* front */
+        rotation = <90>;        /* assumed: the opposite of the rear sensor */
+        reg = <0x10>;
+        clocks = <&cmu_mif CLK_GOUT_MIF_CMU_ISP_SENSOR1>,
+                 <&cmu_mif CLK_GOUT_MIF_CMU_ISP_CAM>,
+                 <&cmu_mif CLK_GOUT_MIF_CMU_ISP_ISP>;
+        clock-names = "mclk", "cam", "isp";
+        pinctrl-names = "default";
+        pinctrl-0 = <&fimc_is_mclk1_fn>;
+        avdd-supply = <&vdd_ldo35>;
+        reset-gpios = <&gpf3 1 GPIO_ACTIVE_LOW>;
+        dvdd-gpios = <&gpf3 0 GPIO_ACTIVE_HIGH>;
+        iovdd-supply = <&cam_io_1p8>;
+        phys = <&mipi_phy 2>;
+        phy-names = "csis";
+    };
+};

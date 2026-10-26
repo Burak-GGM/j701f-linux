@@ -1,0 +1,7 @@
+# Written by Claude 2026-10-10. Installed as /etc/udev/rules.d/83-j701f-camera.rules.
+# The camera driver (tools/kmod/j701f_camera.c) makes media, sub-device and
+# video nodes; libcamera in the desktop session needs all three kinds, and
+# /dev/udmabuf for its software image processing.
+SUBSYSTEM=="media", GROUP="video", MODE="0660"
+SUBSYSTEM=="video4linux", GROUP="video", MODE="0660"
+KERNEL=="udmabuf", GROUP="video", MODE="0660"

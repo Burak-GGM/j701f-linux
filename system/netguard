@@ -1,0 +1,30 @@
+#!/bin/sh
+# Written by Claude 2026-10-09. Installed as /sbin/j701f-netguard, started once
+# from /etc/inittab. Remote-safety net for new mainline kernels while nobody is
+# near the phone: if a mainline boot has no Wi-Fi address after the grace
+# period, reboot into the vendor 3.18 system in RECOVERY (which has working
+# Wi-Fi) instead of sitting unreachable. No-op on 3.18 and when
+# /etc/j701f-netguard-off exists.
+#
+# Turned off on the phone since 2026-10-26 (that file exists): the owner found the
+# phone starting in the recovery after a restart. Away from the known Wi-Fi
+# this net sends a phone in daily use to the recovery five minutes after every
+# boot - and the recovery boots the system again after four, a loop. It was
+# meant for the days of untried kernels with nobody near the phone.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+case "$(uname -r)" in 3.18.*) exit 0 ;; esac
+[ ! -e /etc/j701f-netguard-off ] || exit 0
+grace=${1:-300}
+waited=0
+while [ "$waited" -lt "$grace" ]; do
+    if ip -4 addr show dev wlan0 2>/dev/null | grep -q 'inet '; then
+        printf 'netguard: wlan0 has an address after %ss on %s\n' "$waited" "$(uname -r)" >> /tmp/boot.log
+        exit 0
+    fi
+    sleep 10
+    waited=$((waited + 10))
+done
+printf 'netguard: no Wi-Fi after %ss on %s; falling back to RECOVERY (3.18)\n' "$grace" "$(uname -r)" \
+    | tee -a /var/log/j701f-netguard.log >> /tmp/boot.log
+sync
+exec /home/burak-alpine/j701f/boot-swap/reboot-recovery --execute

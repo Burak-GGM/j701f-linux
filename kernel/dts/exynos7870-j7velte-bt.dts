@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. Video-codec tree plus a Bluetooth address.
+ *
+ * Without one the controller comes up as AA:AA:AA:AA:AA:AA. The phone's real
+ * address is in EFS, which this project never reads, so a fixed locally
+ * administered address is used, one above the Wi-Fi address in -wifi.dts.
+ * The property is little-endian: 02:70:1F:57:4C:02.
+ * The image built with this tree also carries the BCM43430A1 patch firmware
+ * in the initramfs (tools/build-mainline-image.sh).
+ */
+#include "exynos7870-j7velte-mfc.dts"
+
+&serial1 {
+    bluetooth {
+        local-bd-address = [02 4c 57 1f 70 02];
+    };
+};

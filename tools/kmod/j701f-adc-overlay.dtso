@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Written by Claude 2026-10-13. The SoC's general-purpose ADC, which the
+ * mainline exynos7870.dtsi does not describe. Applied at run time by
+ * j701f_adc.ko, so BOOT is not touched. The address is from the factory
+ * device tree (adc@10550000). The node is for the driver inside j701f_adc.ko:
+ * the kernel's exynos_adc driver ("samsung,exynos7-adc") binds to this ADC
+ * but its conversions time out - the vendor's "v3" variant is initialised
+ * differently and has its result register at another offset.
+ */
+/dts-v1/;
+/plugin/;
+
+&soc {
+	adc@10550000 {
+		compatible = "j701f,exynos7870-adc";
+		reg = <0x10550000 0x1000>;
+		clocks = <&cmu_mif 101>, <&cmu_mif 100>;	/* WRAP_ADC_IF_PCLK_S0, _OSC_SYS */
+		clock-names = "adc", "osc";
+		status = "okay";
+	};
+};

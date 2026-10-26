@@ -1,0 +1,46 @@
+From: Codex <noreply@openai.com>
+Subject: drm/exynos: decon7: select VCLK divider field by SoC
+
+Exynos7870's pinned Samsung regs-decon.h defines VCLKCON_CLKVAL_F at
+bits 16..23, while the common Exynos7 field is bits 0..7. Use per-SoC
+field placement without changing the divider selection or other hardware.
+
+The J701F clock framework reports 64 MHz, selecting divide-by-one, and does
+not enter this branch. This prevents a latent mismatch for other rates;
+it is not evidence of a current simpledrm performance defect.
+Hardware divider behaviour remains untested. Staged, not a build input.
+
+--- a/drivers/gpu/drm/exynos/exynos7_drm_decon.c
++++ b/drivers/gpu/drm/exynos/exynos7_drm_decon.c
+@@ -42,18 +42,21 @@
+ 	unsigned int vidw_buf_start_base;
+ 	unsigned int shadowcon_win_protect_shift;
+ 	unsigned int wincon_burstlen_shift;
++	unsigned int vclkdiv_shift;
+ };
+ 
+ static const struct decon_data exynos7_decon_data = {
+ 	.vidw_buf_start_base = 0x80,
+ 	.shadowcon_win_protect_shift = 10,
+ 	.wincon_burstlen_shift = 11,
++	.vclkdiv_shift = 0,
+ };
+ 
+ static const struct decon_data exynos7870_decon_data = {
+ 	.vidw_buf_start_base = 0x880,
+ 	.shadowcon_win_protect_shift = 8,
+ 	.wincon_burstlen_shift = 10,
++	.vclkdiv_shift = 16,
+ };
+ 
+ struct decon_context {
+@@ -253,7 +256,8 @@
+ 
+ 	clkdiv = decon_calc_clkdiv(ctx, mode);
+ 	if (clkdiv > 1) {
+-		val = VCLKCON1_CLKVAL_NUM_VCLK(clkdiv - 1);
++		val = VCLKCON1_CLKVAL_NUM_VCLK(clkdiv - 1) <<
++			ctx->data->vclkdiv_shift;
+ 		writel(val, ctx->regs + VCLKCON1);
+ 		writel(val, ctx->regs + VCLKCON2);
+ 	}

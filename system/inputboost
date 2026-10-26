@@ -1,0 +1,95 @@
+#!/usr/bin/python3
+# Written by Claude 2026-10-10. Installed as /usr/local/sbin/j701f-inputboost,
+# started by /etc/local.d/j701f-tune.start.
+#
+# Touch boost: while a finger is on the screen (and for a moment after) the CPU
+# frequency floor is raised. The governor picks frequencies from how busy the
+# cores are, and drawing a frame is many short steps on several threads, none of
+# which looks busy; measured with a trivial full-screen animation the desktop
+# reached 42 frames per second at the 546 MHz floor and 49 at 1144 MHz.
+# Measurements: wiki/reference/performance.md
+import glob, os, select, time
+
+FLOOR_IDLE = 546000      # kHz, the lowest operating point (screen off)
+FLOOR_SCREEN = 902000    # kHz while the screen is on: 49.5 -> 53 frames per second untouched
+FLOOR_BOOST = 1144000    # kHz while touching
+HOLD = 3.0               # seconds the boost outlives the last event (covers the animation a tap starts)
+POLICY = '/sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq'
+
+
+def touch_devices():
+    """The touchscreen (anything with absolute axes), the touch keys and the hardware keys."""
+    out = []
+    for path in sorted(glob.glob('/sys/class/input/event*')):
+        try:
+            absolute = int(open(path + '/device/capabilities/abs').read().split()[-1], 16)
+            name = open(path + '/device/name').read().strip()
+        except (OSError, ValueError, IndexError):
+            continue
+        if absolute or 'touchkey' in name or 'gpio-keys' in name:
+            out.append('/dev/input/' + os.path.basename(path))
+    return out
+
+
+def screen_on():
+    """True unless every DRM connector reports DPMS off."""
+    states = []
+    for path in glob.glob('/sys/class/drm/card*-*/dpms'):
+        try:
+            states.append(open(path).read().strip())
+        except OSError:
+            pass
+    return not states or any(s == 'On' for s in states)
+
+
+def set_floor(khz):
+    try:
+        with open(POLICY, 'w') as f:
+            f.write(str(khz))
+    except OSError:
+        pass
+
+
+def main():
+    fds = []
+    for dev in touch_devices():
+        try:
+            fds.append(os.open(dev, os.O_RDONLY | os.O_NONBLOCK))
+        except OSError:
+            pass
+    if not fds:
+        return
+    boosted = False
+    last = 0.0
+    base = None
+    try:
+        while True:
+            ready, _, _ = select.select(fds, [], [], HOLD if boosted else 3.0)
+            now = time.monotonic()
+            want = FLOOR_SCREEN if screen_on() else FLOOR_IDLE
+            if want != base:
+                base = want
+                if not boosted:
+                    set_floor(base)
+            for fd in ready:
+                try:
+                    while os.read(fd, 4096):
+                        last = now
+                except BlockingIOError:
+                    pass
+                except OSError:
+                    fds.remove(fd)
+            if ready and not boosted:
+                set_floor(FLOOR_BOOST)
+                boosted = True
+            elif boosted and now - last >= HOLD:
+                set_floor(base)
+                boosted = False
+            if boosted:
+                time.sleep(0.05)     # do not spin on every single event
+    finally:
+        set_floor(FLOOR_IDLE)
+
+
+if __name__ == '__main__':
+    main()

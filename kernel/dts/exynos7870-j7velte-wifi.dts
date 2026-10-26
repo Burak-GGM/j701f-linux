@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-08. Touch tree plus Wi-Fi. The vendor system
+ * reports BCM43438 rev 1 on dwmmc1@13550000 with WL_REG_ON on gpd3-6 and host
+ * wake on gpa2-2 (live "samsung,brcm-wlan" gpios). Those are the same chip and
+ * pins as the pinned tree's j6lte, whose mmc1/pwrseq/wifi description is
+ * copied here unchanged. brcmfmac is built in; its firmware and this phone's
+ * stock NVRAM are placed in the initramfs because the card probes before the
+ * Alpine root is mounted.
+ */
+#include "exynos7870-j7velte-touch.dts"
+
+/ {
+    /* Keep the eMMC as mmcblk0: without aliases the SDIO host probed first
+     * and the eMMC became mmcblk1 (the storage report then waited 10 s). */
+    aliases {
+        mmc0 = &mmc0;
+        mmc1 = &mmc1;
+    };
+
+    /* Plasma Mobile (like postmarketOS) treats a Meta tap as "home". The
+     * diagnostic base reports the physical Home key as KEY_HOMEPAGE, which
+     * nothing in the session is bound to. Takes effect with the next image. */
+    gpio-keys {
+        key-home {
+            linux,code = <KEY_LEFTMETA>;
+        };
+    };
+
+    pwrseq_mmc1: pwrseq-mmc1 {
+        compatible = "mmc-pwrseq-simple";
+        reset-gpios = <&gpd3 6 GPIO_ACTIVE_LOW>;
+
+        /* Project-chosen, locally administered address. The factory MAC is in
+         * EFS, which this project never reads; without this the driver picks
+         * a random MAC and the DHCP address changes on every boot. */
+        local-mac-address = [02 70 1f 57 4c 01];
+    };
+};
+
+&mmc1 {
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    pinctrl-names = "default";
+    pinctrl-0 = <&sd1_clk &sd1_cmd &sd1_bus1 &sd1_bus4>;
+
+    mmc-pwrseq = <&pwrseq_mmc1>;
+
+    bus-width = <4>;
+    fifo-depth = <64>;
+    samsung,dw-mshc-ciu-div = <3>;
+    samsung,dw-mshc-sdr-timing = <0 3>;
+    samsung,dw-mshc-ddr-timing = <1 2>;
+    non-removable;
+    cap-sd-highspeed;
+    cap-sdio-irq;
+    pio-mode;
+
+    status = "okay";
+
+    wifi@1 {
+        compatible = "brcm,bcm43430a1-fmac", "brcm,bcm4329-fmac";
+        reg = <0x1>;
+        interrupt-names = "host-wake";
+        interrupt-parent = <&gpa2>;
+        interrupts = <2 IRQ_TYPE_LEVEL_LOW>;
+        /* No pinctrl state here. The thirteenth trial showed why: a state with
+         * pin-val = <0> on gpd3-6 is applied when the SDIO function binds and
+         * pulls WL_REG_ON low, so every later command times out (-110). */
+
+        reset-gpios = <&gpd3 6 GPIO_ACTIVE_LOW>;
+
+        /* Project-chosen, locally administered address. The factory MAC is in
+         * EFS, which this project never reads; without this the driver picks
+         * a random MAC and the DHCP address changes on every boot. */
+        local-mac-address = [02 70 1f 57 4c 01];
+    };
+};

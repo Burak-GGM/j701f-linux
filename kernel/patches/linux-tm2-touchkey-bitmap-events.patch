@@ -1,0 +1,52 @@
+From: Claude <noreply@anthropic.com>
+Subject: Input: tm2-touchkey - bitmap event format for TC3xx (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+Without this the driver logs "invalid keycode index -1" for every release on
+this phone and never reports a key release.
+---
+--- a/drivers/input/keyboard/tm2-touchkey.c
++++ b/drivers/input/keyboard/tm2-touchkey.c
+@@ -51,6 +51,7 @@
+ 	const struct touchkey_variant *variant;
+ 	u32 keycodes[4];
+ 	int num_keycodes;
++	bool bitmap_events;
+ };
+ 
+ static const struct touchkey_variant tm2_touchkey_variant = {
+@@ -148,6 +149,24 @@
+ 		goto out;
+ 	}
+ 
++	/*
++	 * J701F local: Coreriver TC3xx parts running "bitmap" firmware report
++	 * key i pressed in bit i and released in bit i + 4 (vendor tc300k.c,
++	 * use_bitmap), instead of an index plus a common release flag.
++	 */
++	if (touchkey->bitmap_events) {
++		for (i = 0; i < touchkey->num_keycodes; i++) {
++			if (data & BIT(i))
++				input_report_key(touchkey->input_dev,
++						 touchkey->keycodes[i], 1);
++			if (data & BIT(i + 4))
++				input_report_key(touchkey->input_dev,
++						 touchkey->keycodes[i], 0);
++		}
++		input_sync(touchkey->input_dev);
++		return IRQ_HANDLED;
++	}
++
+ 	index = (data & TM2_TOUCHKEY_BIT_KEYCODE) - 1;
+ 	if (index < 0 || index >= touchkey->num_keycodes) {
+ 		dev_warn(&touchkey->client->dev,
+@@ -202,6 +221,9 @@
+ 
+ 	touchkey->variant = of_device_get_match_data(&client->dev);
+ 
++	touchkey->bitmap_events = device_property_read_bool(&client->dev,
++							    "j701f,bitmap-events");
++
+ 	touchkey->regulators[0].supply = "vcc";
+ 	touchkey->regulators[1].supply = "vdd";
+ 	touchkey->regulators[2].supply = "vddio";

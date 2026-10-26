@@ -1,0 +1,61 @@
+#!/bin/sh
+# Mainline RAM diagnostics only. No block filesystem is mounted automatically.
+export PATH=/bin:/sbin
+export HOME=/root TERM=vt100
+/bin/busybox mount -t devtmpfs devtmpfs /dev
+mkdir -p /proc /sys /run /tmp /dev/pts
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t tmpfs -o mode=0755,size=8m tmpfs /run
+mount -t tmpfs -o mode=1777,size=16m tmpfs /tmp
+mount -t devpts -o mode=0620,gid=0 devpts /dev/pts
+exec >/dev/console 2>&1
+printf 'J701F MAINLINE RAM DIAGNOSTIC — no automatic block mounts\n'
+uname -a
+cat /proc/cmdline
+printf 'J701F_DIAGNOSTIC_INIT_REACHED\n' > /run/stage-ready
+# Bound the first trial once userspace runs. The normal reboot reason is
+# described in the board DT; this cannot recover an earlier firmware/kernel hang.
+# Claude 2026-10-08: `touch /run/stay` from the USB shell cancels the timed reboot.
+(
+    sleep 90
+    [ ! -e /run/stay ] || exit 0
+    printf 'J701F_DIAGNOSTIC_TIMED_NORMAL_REBOOT\n' >/dev/console
+    # Claude 2026-10-08: when this image is installed in BOOT, the build adds
+    # /bin/reboot-recovery so a failed start falls back to 3.18 in RECOVERY
+    # instead of looping into itself.
+    [ ! -x /bin/reboot-recovery ] || /bin/reboot-recovery
+    /bin/busybox reboot -f
+) &
+HANDOFF_KILL=$!
+# Claude 2026-10-08: block-device report into the kernel log before USB comes
+# up, so the host's dmesg capture includes it. Nothing is mounted.
+[ ! -x /bin/storage-report ] || /bin/storage-report > /dev/kmsg 2>&1
+# Claude 2026-10-08: hardware-verified in the sixth trial: without the S2MU005
+# MUIC in manual mode with D+/D- on the USB path the host never sees a device.
+[ ! -x /bin/muic-usb-path ] || /bin/muic-usb-path > /run/muic.log 2>&1
+/bin/usb-configfs > /run/usb.log 2>&1 &
+[ ! -x /bin/console-diagnostics ] || /bin/console-diagnostics &
+HANDOFF_KILL="$HANDOFF_KILL $!"
+# Claude 2026-10-08: eighth stage. Give the gadget a moment to bind, then hand
+# off to Alpine on USERDATA. If that stops early, the diagnostic shell and the
+# timed reboot below remain exactly as in the seventh candidate.
+# Claude 2026-10-10: recovery image (roadmap stage R). With the UI present the
+# hand-over below happens only when the user (or the trial's autoboot) asks.
+if [ -x /bin/recovery-ui ] && [ -r /bin/recovery-main ]; then
+    . /bin/recovery-main
+    recovery_main
+fi
+if [ -r /bin/alpine-handoff ]; then
+    tries=0
+    while [ ! -e /run/usb-ready ] && [ "$tries" -lt 12 ]; do sleep 1; tries=$((tries + 1)); done
+    . /bin/alpine-handoff
+    alpine_handoff
+fi
+while :; do
+    if [ -c /dev/ttyGS0 ] && [ -e /run/usb-ready ]; then
+        /bin/busybox setsid /bin/busybox getty -L -n -w -l /bin/usb-shell 0 ttyGS0 vt100
+    else
+        sleep 1
+    fi
+done

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" data-benchmark="j701f-scroll-v1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src 'none'; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>J701F scroll benchmark</title>
+<link rel="stylesheet" href="style.css">
+<header>
+  <strong>J701F scroll benchmark</strong>
+  <p>Local, silent test. Browser timing does not prove physical screen output.</p>
+  <div><button id="start">Start 12-second run</button><button id="stop" disabled>Stop</button><button id="ping">Tap response</button></div>
+  <label><input id="toolbar" type="checkbox"> Allow browser toolbar height changes (recorded)</label>
+  <output id="status" aria-live="polite">Ready</output>
+</header>
+<main id="feed"></main>
+<section id="result" hidden><h2>Result</h2><pre id="json"></pre><button id="save">Save JSON</button></section>
+<script type="module" src="bench.js"></script>
+</html>

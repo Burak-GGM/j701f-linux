@@ -1,0 +1,39 @@
+From: Claude <noreply@anthropic.com>
+Subject: watchdog: s3c2410_wdt: optional keep-running through shutdown (J701F local)
+
+Written by Claude 2026-10-09 for the J701F project; not an upstream patch.
+Reason: on 2026-10-09 a reboot hung after a kernel oops had left the PMU
+regmap lock held; the driver had already stopped the watchdog in its shutdown
+hook, so nothing reset the phone and it needed a hand on the power key.
+Enable with s3c2410_wdt.keep_on_shutdown=1 on the kernel command line.
+---
+--- a/drivers/watchdog/s3c2410_wdt.c
++++ b/drivers/watchdog/s3c2410_wdt.c
+@@ -151,6 +151,14 @@
+ module_param(tmr_margin,  int, 0);
+ module_param(tmr_atboot,  int, 0);
+ module_param(nowayout,   bool, 0);
++
++/*
++ * J701F local: leave the watchdog counting through shutdown, so a reboot or
++ * power-off that hangs after the driver's shutdown hook still ends in a reset.
++ */
++static bool keep_on_shutdown;
++module_param(keep_on_shutdown, bool, 0644);
++MODULE_PARM_DESC(keep_on_shutdown, "Keep the watchdog running during shutdown/reboot (default=0)");
+ module_param(soft_noboot, int, 0);
+ 
+ MODULE_PARM_DESC(tmr_margin, "Watchdog tmr_margin in seconds. (default="
+@@ -881,6 +889,12 @@
+ {
+ 	struct s3c2410_wdt *wdt = platform_get_drvdata(dev);
+ 
++	if (keep_on_shutdown) {
++		/* One last full period for the rest of the shutdown path. */
++		s3c2410wdt_start(&wdt->wdt_device);
++		return;
++	}
++
+ 	s3c2410wdt_enable(wdt, false);
+ 	s3c2410wdt_stop(&wdt->wdt_device);
+ }

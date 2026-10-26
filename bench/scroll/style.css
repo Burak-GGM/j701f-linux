@@ -1,0 +1,19 @@
+:root { color-scheme: light; font: 16px system-ui, sans-serif; color: #173044; background: #e9eff4; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+header { position: sticky; top: 0; z-index: 1; padding: 12px; background: #f7fafc; border-bottom: 2px solid #8da4b4; }
+header p { font-size: 12px; margin: 5px 0 10px; }
+button { font: inherit; padding: 9px 10px; margin: 2px; border: 1px solid #65879b; border-radius: 6px; background: #e4edf4; color: #173044; }
+button:disabled { opacity: .5; }
+#ping { min-width: 145px; white-space: nowrap; }
+output { display: block; font-size: 12px; padding-top: 5px; }
+header label { display: block; font-size: 12px; margin-top: 4px; }
+main { padding: 12px; }
+article { margin-bottom: 14px; padding: 14px; border: 1px solid #94aaba; border-radius: 10px; background: #f7fafc; box-shadow: 0 3px 8px #45627830; }
+article h2 { font-size: 18px; margin: 0 0 8px; }
+article p { font-size: 14px; line-height: 1.4; }
+.pattern { height: 150px; border: 2px solid #7892a4; border-radius: 6px; background: repeating-linear-gradient(135deg, #dc8056 0 24px, #57a4c1 24px 48px, #a6bd6c 48px 72px, #d3a8db 72px 96px); }
+.dots { display: flex; gap: 7px; }
+.dots span { width: 24px; height: 24px; border: 2px solid #527c91; border-radius: 50%; background: #abd2de; }
+#result { padding: 14px; background: #f7fafc; border-top: 2px solid #8da4b4; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }

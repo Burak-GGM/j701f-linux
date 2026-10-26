@@ -1,0 +1,5 @@
+# Written by Claude 2026-10-10. Installed as /etc/udev/rules.d/82-j701f-flashlight.rules.
+# The two flashlight LEDs (rear "white:flash", front "white:front-flash",
+# kernel/patches/linux-power-j701f-s2mu005-charger.patch) may be switched by
+# the desktop user: Plasma's flashlight button writes the brightness file.
+ACTION=="add", SUBSYSTEM=="leds", KERNEL=="white:flash|white:front-flash", RUN+="/bin/chmod 0666 /sys%p/brightness"

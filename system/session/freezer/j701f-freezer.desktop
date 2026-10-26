@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=J701F background application freezer
+Comment=Stops applications that stay in the background, continues them when activated
+Exec=sh -c 'while :; do python3 $HOME/.local/lib/j701f-freezer/j701f-freezer.py >>$HOME/.local/state/j701f-freezer.log 2>&1; sleep 5; done'
+X-KDE-autostart-phase=2
+NoDisplay=true

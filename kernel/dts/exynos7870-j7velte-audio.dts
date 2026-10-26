@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. GPU-thermal tree plus audio: the DISPAUD
+ * clock controller, the audio subsystem wrapper ("LPASS"), the audio PL330
+ * DMA, the main I2S controller (stage 1), and the COD3026X codec plus the
+ * sound-card node that also owns the internal audio mixer (stage 2).
+ * The drivers for these nodes are modules that are loaded by hand.
+ * Addresses, interrupts and DMA request lines are from the vendor
+ * exynos7870.dtsi (build/kernel/vendor-audio-reference).
+ *
+ * The simple-framebuffer display depends on DISPAUD clocks the bootloader left
+ * running; the kernel command line keeps clk_ignore_unused for that reason.
+ */
+#include <dt-bindings/i2c/i2c.h>
+#include "exynos7870-j7velte-gputhermal.dts"
+
+&cmu_dispaud { status = "okay"; };
+
+&soc {
+    lpass: audio-subsystem@148f0000 {
+        compatible = "j701f,exynos7870-lpass";
+        reg = <0x148f0000 0x1040>;
+        samsung,syscon-phandle = <&pmu_system_controller>;
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges;
+
+        clocks = <&cmu_dispaud CLK_FOUT_DISPAUD_AUD_PLL>,
+                 <&cmu_dispaud CLK_GOUT_DISPAUD_MUX_AUD_PLL>,
+                 <&cmu_dispaud CLK_GOUT_DISPAUD_MUX_MI2S>,
+                 <&cmu_dispaud CLK_DOUT_DISPAUD_MI2S>,
+                 <&cmu_dispaud CLK_DOUT_DISPAUD_MIXER>,
+                 <&cmu_dispaud CLK_GOUT_DISPAUD_APB_AUD>,
+                 <&cmu_dispaud CLK_GOUT_DISPAUD_APB_AUD_AMP>,
+                 <&cmu_dispaud CLK_GOUT_DISPAUD_MI2S_AUD_I2SCODCLKI>,
+                 <&cmu_dispaud CLK_GOUT_DISPAUD_MIXER_AUD_SYSCLK>;
+        clock-names = "aud_pll", "mux_aud_pll", "mux_mi2s", "dout_mi2s", "dout_mixer",
+                      "apb_aud", "apb_aud_amp", "mi2s_aud", "mixer_sysclk";
+        assigned-clocks = <&cmu_dispaud CLK_FOUT_DISPAUD_AUD_PLL>,
+                          <&cmu_dispaud CLK_MOUT_DISPAUD_MI2S>,
+                          <&cmu_dispaud CLK_DOUT_DISPAUD_MI2S>,
+                          <&cmu_dispaud CLK_DOUT_DISPAUD_MIXER>;
+        assigned-clock-parents = <0>, <&cmu_dispaud CLK_GOUT_DISPAUD_MUX_AUD_PLL_CON>, <0>, <0>;
+        assigned-clock-rates = <98304019>, <0>, <98304019>, <24576004>;
+
+        adma: dma-controller@14890000 {
+            compatible = "arm,pl330", "arm,primecell";
+            reg = <0x14890000 0x1000>;
+            interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
+            clocks = <&cmu_dispaud CLK_GOUT_DISPAUD_APB_AUD>;
+            clock-names = "apb_pclk";
+            #dma-cells = <1>;
+            arm,primecell-periphid = <0x00341330>;
+        };
+
+        i2s0: i2s@148a0000 {
+            compatible = "samsung,s5pv210-i2s";   /* register layout of the vendor "i2s-v5" */
+            reg = <0x148a0000 0x100>;
+            interrupts = <GIC_SPI 69 IRQ_TYPE_LEVEL_HIGH>;
+            dmas = <&adma 0>, <&adma 2>;
+            dma-names = "tx", "rx";
+            clocks = <&cmu_dispaud CLK_GOUT_DISPAUD_APB_AUD>,
+                     <&cmu_dispaud CLK_GOUT_DISPAUD_MI2S_AUD_I2SCODCLKI>,
+                     <&cmu_dispaud CLK_GOUT_DISPAUD_MI2S_AUD_I2SCODCLKI>;
+            clock-names = "iis", "i2s_opclk0", "i2s_opclk1";
+            #sound-dai-cells = <1>;
+        };
+
+        sound: sound@14880000 {
+            compatible = "j701f,exynos7870-audio";
+            reg = <0x14880000 0x200>;   /* S1402X audio mixer */
+            clocks = <&cmu_dispaud CLK_DOUT_DISPAUD_MIXER>,
+                     <&cmu_dispaud CLK_GOUT_DISPAUD_MIXER_AUD_SYSCLK>,
+                     <&cmu_dispaud CLK_GOUT_DISPAUD_APB_AUD>;
+            clock-names = "dout", "sysclk", "apb";
+            samsung,syscon-phandle = <&pmu_system_controller>;
+            samsung,i2s = <&i2s0>;
+            samsung,codec = <&cod3026x>;
+            /* I2S lines between the SoC mixer and the codec in the PMIC */
+            pinctrl-names = "default";
+            pinctrl-0 = <&i2s_pmic_bus>;
+        };
+    };
+};
+
+&hsi2c0 {
+    /* 0x04 is a reserved 7-bit address; the ten-bit flag only gets it past the
+     * I2C core, the bus driver sends the plain address (same trick as vendor). */
+    cod3026x: audio-codec@4 {
+        compatible = "j701f,cod3026x";
+        reg = <(0x04 | I2C_TEN_BIT_ADDRESS)>;
+        vdd-supply = <&vdd_ldo25>;
+        #sound-dai-cells = <0>;
+    };
+};

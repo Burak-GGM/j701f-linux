@@ -1,0 +1,3 @@
+# Written by Claude 2026-10-09. Installed as /etc/udev/rules.d/60-j701f-video.rules.
+# Let members of the "video" group use the hardware video codec nodes.
+SUBSYSTEM=="video4linux", GROUP="video", MODE="0660"

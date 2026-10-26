@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/* Written by Claude 2026-10-09. Peripheral tree plus a read-only SoC
+ * temperature sensor. Live vendor tree: three "samsung,exynos7870-tmu" nodes
+ * (CPUCL0, CPUCL1, G3D) share 0x10130000. Measured under 7.1 through /dev/mem:
+ * CONTROL 0x8903 (core running), TRIMINFO 0x40144, CURRENT_TEMP 0x148, i.e.
+ * 328 - 324 + 25 = 29 C on an idle phone. The local driver only reads; the
+ * zone has no trip points, so nothing throttles or shuts down on this value.
+ */
+#include "exynos7870-j7velte-periph.dts"
+
+/ {
+    thermal-zones {
+        soc-thermal {
+            polling-delay-passive = <0>;
+            polling-delay = <5000>;
+            thermal-sensors = <&tmu_readonly>;
+        };
+    };
+};
+
+&soc {
+    tmu_readonly: thermal-sensor@10130000 {
+        compatible = "j701f,exynos7870-tmu-readonly";
+        reg = <0x10130000 0x200>;
+        #thermal-sensor-cells = <0>;
+    };
+};

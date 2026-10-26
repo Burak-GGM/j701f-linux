@@ -1,0 +1,123 @@
+# Wiki for the SM-J701F Linux port. Sources are in wiki/ (English: page.md,
+# Turkish: page.tr.md). Build: see wiki/maintaining.md.
+site_name: Linux on the Samsung Galaxy J7 Neo (SM-J701F)
+site_description: How a 2017 Exynos 7870 phone went from a repacked recovery image to mainline Linux with Plasma Mobile
+repo_url: https://github.com/Burak-GGM/j701f-linux
+repo_name: Burak-GGM/j701f-linux
+docs_dir: wiki
+site_dir: build/wiki-site
+use_directory_urls: false
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: tr
+          name: Türkçe
+          build: true
+          site_name: Samsung Galaxy J7 Neo (SM-J701F) üzerinde Linux
+          nav_translations:
+            Home: Ana sayfa
+            Using the phone: Telefonu kullanmak
+            The journey: Yolculuk
+            1. Starting point: 1. Başlangıç noktası
+            2. Linux in the recovery slot: 2. Recovery bölümünde Linux
+            3. Alpine on the phone: 3. Telefonda Alpine
+            4. First mainline boot: 4. İlk mainline açılış
+            5. GPU and the slot swap: 5. GPU ve bölüm takası
+            6. Plasma Mobile: 6. Plasma Mobile
+            7. Drivers, one stage at a time: 7. Kademe kademe sürücüler
+            8. Sound: 8. Ses
+            9. A battery number you can believe: 9. İnanılabilir bir pil yüzdesi
+            10. A recovery of our own: 10. Kendi kurtarma ortamımız
+            11. A first camera: 11. İlk kamera
+            12. The real display driver: 12. Gerçek ekran sürücüsü
+            Reference: Başvuru
+            Hardware and status: Donanım ve durum
+            Boot chain and safety nets: Açılış zinciri ve güvenlik ağları
+            Kernel, patches, device tree: Çekirdek, yamalar, aygıt ağacı
+            Real display driver: Gerçek ekran sürücüsü
+            Userspace: Kullanıcı alanı
+            Tools and workflow: Araçlar ve iş akışı
+            Graphical recovery: Grafik arayüzlü kurtarma
+            Camera: Kamera
+            Performance and tuning: Başarım ve ince ayar
+            Browser scroll measurements: Tarayıcı kaydırma ölçümleri
+            Network toolbox: Ağ araç kutusu
+            Lessons and pitfalls: Dersler ve tuzaklar
+            Maintaining this wiki: Bu wikiyi güncel tutmak
+
+nav:
+  - Home: index.md
+  - Using the phone: using.md
+  - The journey:
+      - 1. Starting point: journey/01-starting-point.md
+      - 2. Linux in the recovery slot: journey/02-recovery-linux.md
+      - 3. Alpine on the phone: journey/03-alpine.md
+      - 4. First mainline boot: journey/04-mainline-first-boot.md
+      - 5. GPU and the slot swap: journey/05-gpu-and-slot-swap.md
+      - 6. Plasma Mobile: journey/06-plasma-mobile.md
+      - 7. Drivers, one stage at a time: journey/07-drivers.md
+      - 8. Sound: journey/08-sound.md
+      - 9. A battery number you can believe: journey/09-battery.md
+      - 10. A recovery of our own: journey/10-recovery.md
+      - 11. A first camera: journey/11-camera.md
+      - 12. The real display driver: journey/12-display.md
+  - Reference:
+      - Hardware and status: reference/hardware.md
+      - Boot chain and safety nets: reference/boot-chain.md
+      - Kernel, patches, device tree: reference/kernel.md
+      - Real display driver: reference/display.md
+      - Userspace: reference/userspace.md
+      - Tools and workflow: reference/tools.md
+      - Graphical recovery: reference/recovery.md
+      - Camera: reference/camera.md
+      - Performance and tuning: reference/performance.md
+      - Browser scroll measurements: reference/scroll-benchmark.md
+      - Network toolbox: reference/security-toolbox.md
+      - Lessons and pitfalls: reference/lessons.md
+  - Maintaining this wiki: maintaining.md

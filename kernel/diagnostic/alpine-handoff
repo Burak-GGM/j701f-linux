@@ -1,0 +1,102 @@
+# Written by Claude 2026-10-08. Sourced by the mainline /init (PID 1), not run.
+# Hands off from the 6.15 initramfs to the existing Alpine root on USERDATA,
+# mirroring system/boot-init (identity check, ro,noload inspection, rw reopen,
+# mount moves, switch_root). The only difference from the vendor-kernel boot is
+# a RAM bind mount over /bin/usb-debug, because Alpine's copy drives the legacy
+# Android gadget that mainline does not have. Nothing on DATA is rewritten by
+# this script. alpine_handoff returns non-zero if it stops before the handoff.
+ALPINE_ROOT_UUID=4ce26b55-8a59-4fb7-aad4-919a5c2cefeb
+ALPINE_VERSION=BURAK_ALPINE_0_1
+
+handoff_stop() {
+    printf 'ALPINE HANDOFF STOPPED: %s\n' "$*" | tee /run/handoff-failed > /dev/tty0
+    return 1
+}
+
+alpine_handoff() {
+    root=/newroot
+    node=
+    tries=0
+    while [ -z "$node" ] && [ "$tries" -lt 10 ]; do
+        for candidate in /sys/class/block/*; do
+            grep -qx 'PARTNAME=USERDATA' "$candidate/uevent" 2>/dev/null || continue
+            [ -z "$node" ] || { handoff_stop 'ambiguous USERDATA'; return 1; }
+            node=/dev/${candidate##*/}
+        done
+        [ -n "$node" ] || { sleep 1; tries=$((tries + 1)); }
+    done
+    [ -n "$node" ] && [ -b "$node" ] || { handoff_stop 'no USERDATA block device'; return 1; }
+    case "$(blkid "$node")" in
+        *"UUID=\"$ALPINE_ROOT_UUID\""*"TYPE=\"ext4\""*) ;;
+        *) handoff_stop 'USERDATA is not the project Alpine filesystem'; return 1 ;;
+    esac
+    mkdir -p "$root"
+    mount -t ext4 -o ro,noload "$node" "$root" || { handoff_stop 'read-only root mount failed'; return 1; }
+    if [ "$(cat "$root/etc/j701f-system-version" 2>/dev/null)" != "$ALPINE_VERSION" ] ||
+       [ ! -x "$root/sbin/init" ] || [ ! -f "$root/bin/usb-debug" ] || [ ! -x "$root/bin/usb-shell" ]; then
+        umount "$root"
+        handoff_stop 'root validation failed'; return 1
+    fi
+    for directory in dev proc sys tmp run; do
+        [ -d "$root/$directory" ] && [ ! -L "$root/$directory" ] ||
+            { umount "$root"; handoff_stop "invalid mount destination $directory"; return 1; }
+    done
+    # Claude 2026-10-09: offline filesystem check. The initramfs has no e2fsck,
+    # so borrow the installed one (and the musl loader and libraries it needs)
+    # from the root while it is mounted read-only, then run it on the unmounted
+    # partition. "-p" only makes safe automatic repairs. Skipped silently when
+    # e2fsprogs is not installed. Exit status: 0 clean, 1 errors fixed, >=4 not fixed.
+    # /etc/j701f-fsck-mode in the root may hold one of: -p (default), -fn (forced
+    # read-only report), -fy (forced, answer yes to every repair). Anything else
+    # falls back to -p. The file is read here and never modified.
+    fsck_dir=/run/j701f-fsck; fsck_status=skipped; fsck_mode=-p
+    case "$(cat "$root/etc/j701f-fsck-mode" 2>/dev/null)" in
+        -fn) fsck_mode=-fn ;;
+        -fy) fsck_mode=-fy ;;
+    esac
+    if [ -x "$root/sbin/e2fsck" ] && mkdir -p "$fsck_dir"; then
+        for file in sbin/e2fsck lib/ld-musl-aarch64.so.1 usr/lib/libext2fs.so.2 usr/lib/libcom_err.so.2 \
+                    usr/lib/libblkid.so.1 usr/lib/libuuid.so.1 usr/lib/libe2p.so.2 usr/lib/libeconf.so.0; do
+            cp -L "$root/$file" "$fsck_dir/" 2>/dev/null || fsck_status=incomplete
+        done
+        ln -sf ld-musl-aarch64.so.1 "$fsck_dir/libc.musl-aarch64.so.1"
+        [ "$fsck_status" = incomplete ] || fsck_status=ready
+    fi
+    # Never make a noload mount writable: reopen with normal journal handling.
+    umount "$root" || { handoff_stop 'root inspection unmount failed'; return 1; }
+    if [ "$fsck_status" = ready ]; then
+        "$fsck_dir/ld-musl-aarch64.so.1" --library-path "$fsck_dir" "$fsck_dir/e2fsck" "$fsck_mode" "$node" \
+            > /run/j701f-fsck.log 2>&1
+        fsck_status=$?
+        printf 'j701f: e2fsck %s exit status %s\n' "$fsck_mode" "$fsck_status" > /dev/kmsg 2>/dev/null
+    fi
+    rm -rf "$fsck_dir"
+    mount -t ext4 -o rw "$node" "$root" || { handoff_stop 'writable root mount failed'; return 1; }
+    if ! mount -t tmpfs -o nosuid,nodev,mode=0755,size=64m tmpfs "$root/run" ||
+       ! cp /bin/alpine-usb-debug "$root/run/mainline-usb-debug" ||
+       ! mount -o bind "$root/run/mainline-usb-debug" "$root/bin/usb-debug"; then
+        umount "$root/run" 2>/dev/null; umount "$root"
+        handoff_stop 'RAM usb-debug overlay failed'; return 1
+    fi
+    cp /run/j701f-fsck.log "$root/run/j701f-fsck.log" 2>/dev/null   # readable after boot
+    cp /run/stage-ready /run/usb.log /run/muic.log "$root/run/" 2>/dev/null
+    dmesg > "$root/run/mainline-initramfs-dmesg.txt"
+    printf 'J701F_MAINLINE_ALPINE_HANDOFF\n' | tee /dev/kmsg > /dev/tty0
+    # The on-device terminal draws on the same simpledrm framebuffer: stop the
+    # kernel console from painting over it once Alpine takes the screen.
+    dmesg -n 1
+    for vt in /sys/class/vtconsole/vtcon*; do
+        case "$(cat "$vt/name" 2>/dev/null)" in *"frame buffer"*) echo 0 > "$vt/bind" ;; esac
+    done
+    # Stale initramfs helpers must not outlive their root (the timed reboot too).
+    for pid in $HANDOFF_KILL; do kill "$pid" 2>/dev/null; done
+    for directory in dev sys tmp proc; do
+        mount --move "/$directory" "$root/$directory" || {
+            printf 'Mount handoff failed at %s; restarting.\n' "$directory" > /dev/console
+            sync
+            [ ! -x /bin/reboot-recovery ] || /bin/reboot-recovery
+            /bin/busybox reboot -f
+        }
+    done
+    exec switch_root "$root" /sbin/init
+}

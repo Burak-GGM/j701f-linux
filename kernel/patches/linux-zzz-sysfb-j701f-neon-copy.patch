@@ -1,0 +1,156 @@
+From: Claude <noreply@anthropic.com>
+Subject: drm/sysfb: NEON line converters for the J701F framebuffer copy
+
+Written by Claude 2026-10-10 for the J701F project; not an upstream patch.
+Applies on top of linux-zz-simpledrm-j701f-software-backlight.patch. The plain
+and the dimmed copy into the bootloader framebuffer use NEON when kernel-mode
+SIMD is available, 32 lines per section; the scalar code stays as fallback.
+---
+--- a/drivers/gpu/drm/sysfb/Makefile
++++ b/drivers/gpu/drm/sysfb/Makefile
+@@ -4,6 +4,12 @@
+ 	drm_sysfb.o \
+ 	drm_sysfb_modeset.o
+ drm_sysfb_helper-$(CONFIG_SCREEN_INFO) += drm_sysfb_screen_info.o
++# J701F local: NEON line converters for the framebuffer copy
++ifeq ($(CONFIG_ARM64)$(CONFIG_KERNEL_MODE_NEON),yy)
++drm_sysfb_helper-y += drm_sysfb_j701f_neon.o
++CFLAGS_drm_sysfb_j701f_neon.o += $(CC_FLAGS_FPU)
++CFLAGS_REMOVE_drm_sysfb_j701f_neon.o += $(CC_FLAGS_NO_FPU)
++endif
+ obj-$(CONFIG_DRM_SYSFB_HELPER)	+= drm_sysfb_helper.o
+ 
+ obj-$(CONFIG_DRM_COREBOOTDRM)	+= corebootdrm.o
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_helper.h
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_helper.h
+@@ -131,6 +131,10 @@
+ 
+ void drm_sysfb_plane_redraw(struct drm_plane *plane);
+ 
++/* J701F local, drm_sysfb_j701f_neon.c: call only inside a kernel-mode NEON section */
++void drm_sysfb_j701f_neon_opaque(u8 *dst, const u8 *src, unsigned int pixels);
++void drm_sysfb_j701f_neon_dimmed(u8 *dst, const u8 *src, unsigned int pixels, unsigned int level);
++
+ #define DRM_SYSFB_PLANE_FORMAT_MODIFIERS \
+ 	DRM_FORMAT_MOD_LINEAR, \
+ 	DRM_FORMAT_MOD_INVALID
+--- a/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_modeset.c
+@@ -19,6 +19,15 @@
+ 
+ #include "drm_sysfb_helper.h"
+ 
++#if defined(CONFIG_ARM64) && defined(CONFIG_KERNEL_MODE_NEON)
++#include <asm/simd.h>
++#define J701F_NEON 1
++/* Lines converted per kernel-mode NEON section (preemption is off inside one). */
++#define J701F_NEON_LINES 32
++#else
++#define J701F_NEON 0
++#endif
++
+ struct drm_display_mode drm_sysfb_mode(unsigned int width,
+ 				       unsigned int height,
+ 				       unsigned int width_mm,
+@@ -221,6 +230,22 @@
+ 	if (!dst[0].is_iomem && !src[0].is_iomem) {
+ 		s = src[0].vaddr + clip->y1 * fb->pitches[0] + clip->x1 * sizeof(u32);
+ 		d = dst[0].vaddr;
++#if J701F_NEON
++		if (may_use_simd()) {
++			for (y = 0; y < height; y += J701F_NEON_LINES) {
++				unsigned int n = min(height - y, (unsigned int)J701F_NEON_LINES);
++
++				scoped_ksimd() {
++					while (n--) {
++						drm_sysfb_j701f_neon_opaque(d, s, width);
++						s += fb->pitches[0];
++						d += pitch;
++					}
++				}
++			}
++			return;
++		}
++#endif
+ 		for (y = 0; y < height; y++) {
+ 			const u32 *sl = s;
+ 			u32 *dl = d;
+@@ -274,6 +299,22 @@
+ 	unsigned int x, y;
+ 
+ 	src += clip->y1 * fb->pitches[0] + clip->x1 * sizeof(u32);
++#if J701F_NEON
++	if (may_use_simd()) {
++		for (y = 0; y < height; y += J701F_NEON_LINES) {
++			unsigned int n = min(height - y, (unsigned int)J701F_NEON_LINES);
++
++			scoped_ksimd() {
++				while (n--) {
++					drm_sysfb_j701f_neon_dimmed(dst, src, width, level);
++					src += fb->pitches[0];
++					dst += dst_pitch;
++				}
++			}
++		}
++		return;
++	}
++#endif
+ 	for (y = 0; y < height; y++) {
+ 		const u32 *s = src;
+ 		u32 *d = dst;
+--- /dev/null
++++ b/drivers/gpu/drm/sysfb/drm_sysfb_j701f_neon.c
+@@ -0,0 +1,53 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Written by Claude 2026-10-10 (J701F local). NEON line converters for the
++ * copy into the bootloader framebuffer; built with FP/SIMD enabled and only
++ * called between kernel_neon_begin() and kernel_neon_end()
++ * (drm_sysfb_modeset.c). Pixels are little-endian XRGB8888 in, ARGB8888 out.
++ */
++#include <linux/types.h>
++#include <asm/neon-intrinsics.h>
++
++#include "drm_sysfb_helper.h"
++
++static const u8 j701f_alpha[16] = {
++	0, 0, 0, 0xff, 0, 0, 0, 0xff, 0, 0, 0, 0xff, 0, 0, 0, 0xff,
++};
++
++/* dst = src | 0xff000000 for @pixels pixels */
++void drm_sysfb_j701f_neon_opaque(u8 *dst, const u8 *src, unsigned int pixels)
++{
++	const uint8x16_t alpha = vld1q_u8(j701f_alpha);
++
++	for (; pixels >= 8; pixels -= 8, src += 32, dst += 32) {
++		vst1q_u8(dst, vorrq_u8(vld1q_u8(src), alpha));
++		vst1q_u8(dst + 16, vorrq_u8(vld1q_u8(src + 16), alpha));
++	}
++	for (; pixels; pixels--, src += 4, dst += 4) {
++		dst[0] = src[0];
++		dst[1] = src[1];
++		dst[2] = src[2];
++		dst[3] = 0xff;
++	}
++}
++
++/* dst = round(src * level / 256) per colour channel, alpha 0xff; @level is 0..255 */
++void drm_sysfb_j701f_neon_dimmed(u8 *dst, const u8 *src, unsigned int pixels, unsigned int level)
++{
++	const uint8x16_t alpha = vld1q_u8(j701f_alpha);
++	const uint8x8_t f = vdup_n_u8(level);
++
++	for (; pixels >= 4; pixels -= 4, src += 16, dst += 16) {
++		uint8x16_t v = vld1q_u8(src);
++		uint8x8_t lo = vrshrn_n_u16(vmull_u8(vget_low_u8(v), f), 8);
++		uint8x8_t hi = vrshrn_n_u16(vmull_u8(vget_high_u8(v), f), 8);
++
++		vst1q_u8(dst, vorrq_u8(vcombine_u8(lo, hi), alpha));
++	}
++	for (; pixels; pixels--, src += 4, dst += 4) {
++		dst[0] = (src[0] * level + 128) >> 8;
++		dst[1] = (src[1] * level + 128) >> 8;
++		dst[2] = (src[2] * level + 128) >> 8;
++		dst[3] = 0xff;
++	}
++}
