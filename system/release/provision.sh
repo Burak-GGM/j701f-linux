@@ -157,10 +157,15 @@ copy system/session/freezer/j701f-freezer.py home/burak-alpine/.local/lib/j701f-
 copy system/session/freezer/j701f-freezer.conf home/burak-alpine/.config/j701f-freezer.conf 644
 copy system/session/freezer/j701f-freezer.desktop home/burak-alpine/.config/autostart/j701f-freezer.desktop 644
 copy system/release/kscreenlockerrc home/burak-alpine/.config/kscreenlockerrc 644
+# The recents touch key sends KEY_PROG1 ("Launch (1)" in Qt); Plasma binds
+# nothing to it by default.
+copy system/release/kglobalshortcutsrc home/burak-alpine/.config/kglobalshortcutsrc 644
 copy system/camera/j701f-camera usr/local/bin/j701f-camera
 copy system/camera/j701f-photo usr/local/bin/j701f-photo
 copy system/camera/j701f-camera-front.desktop usr/local/share/applications/j701f-camera-front.desktop 644
 copy system/camera/j701f-camera-rear.desktop usr/local/share/applications/j701f-camera-rear.desktop 644
+copy system/flashlight/j701f-front-flash usr/local/bin/j701f-front-flash
+copy system/flashlight/j701f-front-flash.desktop usr/local/share/applications/j701f-front-flash.desktop 644
 
 for level_service in \
     sysinit:cgroups sysinit:devfs sysinit:procfs sysinit:sysfs \

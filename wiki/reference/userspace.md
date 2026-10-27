@@ -38,7 +38,9 @@ The sources are in `system/` in the repository.
 | `~/j701f/boot-swap/reboot-recovery.sh` | `reboot-recovery.sh` | Restart into the recovery with clean filesystems: clears the stamp files, stops the desktop, remounts read-only, then calls `reboot-recovery` |
 | `~/j701f/battery/j701f-battery` | `battery/` | Battery helper: gauge mode switch and charge current by temperature (see below); run by hand so far |
 | `~/j701f/modules/misc/j701f_adc.ko` | `tools/kmod/j701f_adc.c` | Battery and board temperature (hwmon device `j701f_adc`); loaded with the other modules in that folder |
-| `/etc/localtime` | — | Time zone (was missing: the phone showed UTC) |
+| `/etc/localtime`, `/etc/timezone` | `build-release.py --timezone` | Time zone; the release builder uses the build computer's zone unless told otherwise. Without it the phone shows UTC (both the old system and the first release lacked it) |
+| `/usr/local/bin/j701f-front-flash`, launcher "Front flash" | `flashlight/` | Switches the front flash LED on or off (Plasma's flashlight button only drives the rear one) |
+| `~/.config/kglobalshortcutsrc` | `release/kglobalshortcutsrc` | Binds the recents touch key (`KEY_PROG1`, Qt "Launch (1)") to Plasma Mobile's task switcher; Plasma binds nothing to it by default. Takes effect at the next login |
 
 ## Graphics
 

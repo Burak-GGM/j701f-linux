@@ -1,0 +1,17 @@
+#!/bin/sh
+# Written by Claude 2026-10-27. Started from the "Front flash" launcher: switches
+# the front flash LED (white:front-flash, S2MU005) on or off. Plasma Mobile's
+# flashlight button only drives the rear LED; the udev rule
+# system/flashlight-udev.rules makes both brightness files writable by the user.
+# Usage: j701f-front-flash [on|off|toggle]
+led=/sys/class/leds/white:front-flash
+[ -w "$led/brightness" ] || {
+    notify-send -t 6000 "Front flash" "LED not available ($led)" 2>/dev/null
+    exit 1
+}
+case ${1:-toggle} in
+on) want=on ;;
+off) want=off ;;
+*) if [ "$(cat "$led/brightness")" -gt 0 ]; then want=off; else want=on; fi ;;
+esac
+if [ "$want" = on ]; then cat "$led/max_brightness" > "$led/brightness"; else echo 0 > "$led/brightness"; fi

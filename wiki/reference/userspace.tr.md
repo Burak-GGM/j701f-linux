@@ -38,7 +38,9 @@ Kaynakları depoda `system/` içindedir.
 | `~/j701f/boot-swap/reboot-recovery.sh` | `reboot-recovery.sh` | Dosya sistemlerini temiz bırakarak kurtarma ortamına geçiş: damga dosyalarını siler, masaüstünü durdurur, salt okunur bağlar, sonra `reboot-recovery`'yi çağırır |
 | `~/j701f/battery/j701f-battery` | `battery/` | Pil yardımcısı: gösterge kipi değişimi ve sıcaklığa göre şarj akımı (aşağıya bakın); şimdilik elle çalıştırılıyor |
 | `~/j701f/modules/misc/j701f_adc.ko` | `tools/kmod/j701f_adc.c` | Pil ve kart sıcaklığı (hwmon aygıtı `j701f_adc`); o klasördeki öteki modüllerle birlikte yüklenir |
-| `/etc/localtime` | — | Saat dilimi (eksikti: telefon UTC gösteriyordu) |
+| `/etc/localtime`, `/etc/timezone` | `build-release.py --timezone` | Saat dilimi; sürüm oluşturucu, başka bir şey söylenmedikçe derlemeyi yapan bilgisayarın dilimini kullanır. Bu dosya olmadan telefon UTC gösterir (hem eski sistemde hem ilk sürümde eksikti) |
+| `/usr/local/bin/j701f-front-flash`, "Ön flaş" kısayolu | `flashlight/` | Ön flaş LED'ini açar ya da kapatır (Plasma'nın fener düğmesi yalnızca arkadakini yakar) |
+| `~/.config/kglobalshortcutsrc` | `release/kglobalshortcutsrc` | Son uygulamalar dokunmatik tuşunu (`KEY_PROG1`, Qt'de "Launch (1)") Plasma Mobile'ın görev değiştiricisine bağlar; Plasma bu tuşa varsayılan olarak hiçbir şey bağlamaz. Bir sonraki oturum açılışında etkinleşir |
 
 ## Grafik
 

@@ -35,7 +35,7 @@
 | Charging | ⚠️ | The hardware charges on its own; the driver reports cable, cable type, charging state and health, sets the two current limits by cable type and can switch charging off and on (`charge_behaviour`). Limits: computer port 500 mA in / 450 mA into the battery (the bootloader's values), charging port 1000/1000, wall charger 1200/1000 (vendor: 1550/2150). The battery helper script raises the wall-charger values to 1550/1500 while the battery is between 15 and 41 °C and lowers the current when it is cold or hot. The wall-charger case is written and tested against a simulated system, but not yet tried with a wall charger. Float voltage and top-off are the bootloader's |
 | Temperature | ✅ | Processor: local read-only driver; throttling at 70 °C, shutdown at 105 °C. Battery and board thermistors: read through the SoC's ADC by a small module (`j701f_adc`, a hwmon device), loaded at boot |
 | Watchdog | ✅ | 30 s, armed from boot |
-| Home key, touch keys | ✅ | Mapped to home, task switcher and back |
+| Home key, touch keys | ✅ | Mapped to home, task switcher and back. Recents needs the release's `kglobalshortcutsrc` binding; back works where the app has somewhere to go back to (Kirigami apps, the app drawer, folders), and does nothing on the home screen |
 | Accelerometer | ✅ | `iio-sensor-proxy` reads it and KWin rotates the screen; all four orientations confirmed by the owner after the mounting matrix was corrected |
 | Vibration motor | ⚠️ | `regulator-haptic`; since 2026-10-13 the desktop's vibration service (feedbackd) is installed and drives it - the motor's supply switches on during a feedback event. Not yet confirmed by hand |
 | microSD slot | ✅ | High-speed mode, about 22 MB/s; mounted at `/media/sdcard` at boot and offered over MTP; UHS modes and hot-plug not tested |
@@ -43,7 +43,7 @@
 | Hardware video decoding | ⚠️ | The codec works: a 720p H.264 file decodes with about 24 times less CPU time than in software. Loaded at boot; H.264 from 360p to 1080p, HEVC and VP8 decode correctly (bit-exact against software), MPEG-2 works, MPEG-4 does not. `mpv` is configured to use it; the browsers are not |
 | Modem (calls, SMS, data) | ❌ | Not started |
 | Camera | ⚠️ | Both sensors (rear S5K3L2, front S5K5E3) deliver raw frames through a local driver that bypasses Samsung's FIMC-IS; libcamera processes them in software. Plasma Camera shows a preview, takes photographs and switches cameras. Reduced resolution (2072×1552 rear), no autofocus, plain colours, video recording does not work. See [Camera](camera.md) |
-| Flashlight | ✅ | Rear and front flash LEDs as two LED devices in torch mode (rear 25–150 mA in six steps, front 25–50 mA); confirmed by the owner. Plasma's flashlight tile switches the rear one |
+| Flashlight | ✅ | Rear and front flash LEDs as two LED devices in torch mode (rear 25–150 mA in six steps, front 25–50 mA); confirmed by the owner. Plasma's flashlight tile switches the rear one; the "Front flash" app (`j701f-front-flash`) the front one |
 | Power domains | ⚠️ | No driver. All four are on at boot and stay on (the module that switched the camera domain off is retired now that the camera is used). Switching the video domain by hand broke the codec until a reboot |
 | Suspend | ⚠️ | Suspend-to-idle works and resumes in half a second (verified with clock-alarm wake-ups up to 60 s). Wakes on the clock alarm only (key wake-up was removed again, it slowed application start); nothing suspends the phone automatically; power saving not measured ([details](kernel.md#suspend)) |
 

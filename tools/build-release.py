@@ -117,7 +117,9 @@ def validate_root(root):
            "[ \"$(stat -c %a:%g /target/usr/libexec/dbus-daemon-launch-helper)\" = \"4750:$(g messagebus)\" ]; "
            "[ \"$(stat -c %a:%g /target/etc/polkit-1/rules.d)\" = \"750:$(g polkitd)\" ]; "
            "grep -qx 'RequirePassword=false' "
-           "/target/home/burak-alpine/.config/kscreenlockerrc")
+           "/target/home/burak-alpine/.config/kscreenlockerrc; "
+           "grep -qF 'Mobile Task Switcher=Meta+C\\tLaunch (1),' "
+           "/target/home/burak-alpine/.config/kglobalshortcutsrc")
     if (root / 'home/burak-alpine/.ssh/authorized_keys').exists():
         raise ValueError('Refusing to include a preinstalled SSH public key')
     if list((root / 'etc/ssh').glob('ssh_host_*')):
@@ -232,6 +234,12 @@ def refresh_release_scripts(root):
            '/target/etc/init.d/j701f-release-setup; '
            'install -m 644 /src/system/release/kscreenlockerrc '
            '/target/home/burak-alpine/.config/kscreenlockerrc; '
+           'install -m 644 /src/system/release/kglobalshortcutsrc '
+           '/target/home/burak-alpine/.config/kglobalshortcutsrc; '
+           'install -m 755 /src/system/flashlight/j701f-front-flash '
+           '/target/usr/local/bin/j701f-front-flash; '
+           'install -m 644 /src/system/flashlight/j701f-front-flash.desktop '
+           '/target/usr/local/share/applications/j701f-front-flash.desktop; '
            'install -m 644 /src/system/release/fstab /target/etc/fstab; '
            'mkdir -p /target/media/sdcard /target/etc/umtprd /target/etc/local.d; '
            'install -m 755 /src/system/usb-mtp/start.sh '
@@ -244,7 +252,8 @@ def refresh_release_scripts(root):
            'mkdir -p /target/etc/runlevels/boot; '
            'ln -sfn /etc/init.d/localmount '
            '/target/etc/runlevels/boot/localmount; '
-           'chown 1000:1000 /target/home/burak-alpine/.config/kscreenlockerrc; '
+           'chown 1000:1000 /target/home/burak-alpine/.config/kscreenlockerrc '
+           '/target/home/burak-alpine/.config/kglobalshortcutsrc; '
            'chgrp shadow /target/etc/shadow; chmod 640 /target/etc/shadow; '
            # apk --no-scripts extracts these before their groups exist and falls
            # back to root: D-Bus could not start wpa_supplicant (no Wi-Fi) and
@@ -295,6 +304,23 @@ def migrate_unconfigured_account(root):
            'rm -f /target/etc/elogind/logind.conf.d/j701f-nosleep.conf; '
            'install -D -m 644 /src/system/elogind-nosleep.conf '
            '/target/etc/elogind/sleep.conf.d/10-j701f-nosleep.conf')
+
+
+def host_timezone():
+    """The build computer's zone name, or UTC when /etc/localtime is not a zoneinfo link."""
+    target = str(Path('/etc/localtime').resolve())
+    marker = '/zoneinfo/'
+    return target.split(marker, 1)[1] if marker in target else 'UTC'
+
+
+def set_timezone(root, zone):
+    """Without /etc/localtime the phone shows UTC (fresh release, 2026-10-27)."""
+    if not re.fullmatch(r'[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+)*', zone):
+        raise ValueError(f'Invalid time zone name: {zone}')
+    docker('-v', f'{root}:/target', CONTAINER, 'sh', '-ec',
+           f'test -f /target/usr/share/zoneinfo/{zone}; '
+           f'ln -sfn /usr/share/zoneinfo/{zone} /target/etc/localtime; '
+           f"printf '%s\\n' {zone} > /target/etc/timezone; chmod 644 /target/etc/timezone")
 
 
 def compile_schema_cache(root):
@@ -355,6 +381,8 @@ def main():
                         help='private, device-extracted Samsung video firmware; keep output local')
     parser.add_argument('--umtprd-binary', type=Path,
                         help='local AArch64 uMTP-Responder executable; keep output private')
+    parser.add_argument('--timezone', default=host_timezone(),
+                        help='zone name for /etc/localtime (default: this computer\'s zone)')
     parser.add_argument('--reuse-rootfs', action='store_true',
                         help='developer-only: rebuild payload from the already provisioned rootfs')
     args = parser.parse_args()
@@ -380,6 +408,7 @@ def main():
     ensure_persistent_wifi(root)
     refresh_release_scripts(root)
     compile_schema_cache(root)
+    set_timezone(root, args.timezone)
     copy_local_wifi_firmware(root, args.wifi_firmware_dir.resolve()
                              if args.wifi_firmware_dir else None)
     copy_local_mfc_firmware(root, args.mfc_firmware_file.resolve()
@@ -411,6 +440,7 @@ def main():
         'personal_mfc_firmware': private_mfc,
         'local_umtprd_binary': private_umtprd,
         'native_display_enabled': native_display,
+        'timezone': args.timezone,
         'redistributable': not (private_wifi or private_mfc or private_umtprd),
         'container': CONTAINER,
         'raw_image': {'file': raw.name, 'sha256': raw_digest, 'bytes': raw.stat().st_size},
