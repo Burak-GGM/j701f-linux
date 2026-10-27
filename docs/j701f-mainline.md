@@ -1745,5 +1745,6 @@ While the owner went through Plasma Mobile's Welcome wizard, NetworkManager show
 
 - On the phone over USB: both re-grouped (`messagebus`, `polkitd`), NetworkManager restarted: `wlan0` "disconnected", 12 networks in the scan; polkit restarted.
 - In the builder: `provision.sh` and `refresh_release_scripts` set both, using the group numbers from the target's own `/etc/group` (the build container's names may differ); `validate_root` checks mode and group. Rebuilt from the reused root: PASS, helper `4750 0:101`, rules `750 0:107`, no-sleep file in `sleep.conf.d`.
+- Systematic check for more of the same: the packages whose scripts create users or groups (dbus, its launch helper, polkit, rtkit, sddm, seatd, avahi, feedbackd, NetworkManager, PipeWire, libftdi1, shadow, wpa_supplicant, BlueZ, utmps; 188 packages with dependencies) installed natively, scripts included, in an x86_64 Alpine 3.24 container, and every path not owned by root:root listed. Only five: the launch helper and `polkit-1/rules.d` (fixed above), `/etc/shadow` (fixed earlier), `unix_chkpwd` (already right) and `/var/lib/sddm` (`2755 sddm:video`; the release had 755, now 2755 in `provision.sh`). Nothing else is hiding behind `--no-scripts` in these packages.
 
 <!-- CLAUDE-END 2026-10-09 -->

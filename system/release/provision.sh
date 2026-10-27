@@ -187,6 +187,7 @@ chmod 1777 "$root/tmp"
 chmod 700 "$root/root" "$root/home/burak-alpine/.ssh"
 chown -R 1000:1000 "$root/home/burak-alpine"
 chown 101:27 "$root/var/lib/sddm"
+chmod 2755 "$root/var/lib/sddm"   # as the sddm package sets it
 chown 104:108 "$root/var/lib/geoclue"
 
 # No Wi-Fi profile, SSH key, password, machine-id or host key is copied from the
