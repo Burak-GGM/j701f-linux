@@ -40,7 +40,7 @@ Samsung'un kamera yazılımından hiçbir şey kullanılmıyor - ne sürücüsü
 
 ## Eksikler
 
-- Tam çözünürlük (şimdilik sensör başına tek kip), otomatik odak (arka mercek motoru sürülmüyor), çekim sırasında flaş.
+- Tam çözünürlük (şimdilik sensör başına tek kip), otomatik odak (arka mercek motoru sürülmüyor: motor `hsi2c@138b0000` üzerinde 0x0c adresinde, projenin aygıt ağacı bu denetleyiciyi henüz açmıyor; ayar verilerini tutan arka EEPROM da aynı hatta, 0x58'de), çekim sırasında flaş.
 - Sensör ayarı: renk matrisi ve mercek gölgeleme düzeltmesi yok; libcamera iki sensörü de tanımıyor ve bunu söylüyor.
 - Otomatik pozlama yavaş tırmanıyor: loş bir odada resmin aydınlanması birkaç saniye sürüyor.
 - Görüntü döndürmesi: arka kamera için ilk tahmin fotoğrafları tepetaklak verdi (telefon sahibinin bildirimi); şimdi 270°. Ön kameranın 90° değeri ayna varsayımıdır, denetlenmedi.
