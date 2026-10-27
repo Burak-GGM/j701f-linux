@@ -84,6 +84,8 @@ plugins:
             Real display driver: Gerçek ekran sürücüsü
             Userspace: Kullanıcı alanı
             Tools and workflow: Araçlar ve iş akışı
+            Installing a release: Dağıtımın kurulumu
+            Building a release: Dağıtım imajının oluşturulması
             Graphical recovery: Grafik arayüzlü kurtarma
             Camera: Kamera
             Performance and tuning: Başarım ve ince ayar
@@ -115,6 +117,8 @@ nav:
       - Real display driver: reference/display.md
       - Userspace: reference/userspace.md
       - Tools and workflow: reference/tools.md
+      - Installing a release: reference/installation.md
+      - Building a release: reference/release-build.md
       - Graphical recovery: reference/recovery.md
       - Camera: reference/camera.md
       - Performance and tuning: reference/performance.md

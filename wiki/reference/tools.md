@@ -55,6 +55,19 @@ python3 tools/prepare-boot-update.py --handoff-dir build/kernel/handoff-NAME \
 | `prepare-boot-update.py`, `run-boot-update.sh` | Prepare and carry out a guarded write to `BOOT` |
 | `run-recovery-update.sh` | The same update through the project's own recovery instead of the vendor system: stage the image, reboot into the recovery, let its `flash-boot.sh` write and verify BOOT over SSH, reboot. The way to update BOOT since the recovery was installed (2026-10-10); `restore-vendor-recovery.sh` puts the vendor system back into RECOVERY (not run so far) |
 
+## Release and installation tools
+
+| Tool | Purpose |
+| --- | --- |
+| `build-release.py` | Build the USERDATA release: signed Alpine minirootfs, AArch64 packages, provisioning from `system/release/`, ext4 image with the fixed UUID, `userdata.ext4.gz`, two SHA-256 files and `release.json`. Docker required ([building a release](release-build.md)) |
+| `scripts/install-release.py` | Reinstall a release on a phone already running this system: stage it on the SD card, reboot into the recovery, optional full USERDATA backup, write and read back ([installing a release](installation.md)) |
+| `scripts/install-release-on-recovery.sh`, `recovery-install-job.sh`, `restore-userdata-on-recovery.sh` | The recovery side: guarded USERDATA write and full read-back, a detached job that survives a USB disconnect, restore of a backup |
+| `build-recovery-zip.py` | The flashable ZIP for TWRP/OrangeFox ([graphical recovery](recovery.md)) |
+| `prepare-first-install.py` | Single-member Odin archives of the BOOT and RECOVERY images for a phone still on stock Android, with every check the images must pass |
+| `scripts/first-install.py` | Host side of the first installation: checks the archives, the release and the microSD card, prints the steps, `--stage` copies everything to the card. Never runs Odin or touches the phone |
+
+Tests for all of them run against simulated phones under `qemu-aarch64` with the BusyBox the recovery uses; none of them has been run on the phone yet (2026-10-27).
+
 ## Talking to the phone
 
 | Tool | Purpose |

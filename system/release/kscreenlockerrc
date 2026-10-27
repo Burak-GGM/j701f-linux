@@ -1,0 +1,5 @@
+[Daemon]
+Autolock=false
+LockOnResume=false
+LockOnStart=false
+RequirePassword=false

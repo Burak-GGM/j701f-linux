@@ -1,0 +1,10 @@
+#!/sbin/openrc-run
+description="Create J701F package caches on the first Alpine boot"
+depend() {
+    before dbus sddm
+}
+start() {
+    ebegin "J701F initial package setup"
+    timeout 600 /usr/local/sbin/j701f-release-firstboot
+    eend $?
+}

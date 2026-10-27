@@ -1,0 +1,2 @@
+# Root and virtual filesystems are mounted by the J701F BOOT loader.
+/dev/mmcblk2p1 /media/sdcard vfat nofail,noatime,uid=1000,gid=1000,umask=022,utf8,flush 0 0

@@ -55,6 +55,19 @@ python3 tools/prepare-boot-update.py --handoff-dir build/kernel/handoff-AD \
 | `prepare-boot-update.py`, `run-boot-update.sh` | `BOOT`'a korumalı bir yazmayı hazırla ve gerçekleştir |
 | `run-recovery-update.sh` | Aynı güncellemeyi üretici sistemi yerine projenin kendi kurtarma ortamı üzerinden yapar: imajı hazırla, kurtarma ortamına yeniden başlat, BOOT'u SSH üzerinden onun `flash-boot.sh` betiğine yazdırıp doğrulat, yeniden başlat. Kurtarma ortamı kurulduğundan (2026-10-10) beri BOOT'u güncellemenin yolu; `restore-vendor-recovery.sh` üretici sistemini RECOVERY'ye geri koyar (henüz çalıştırılmadı) |
 
+## Dağıtım ve kurulum araçları
+
+| Araç | Amaç |
+| --- | --- |
+| `build-release.py` | USERDATA sürümünü oluşturur: imzalı Alpine minirootfs, AArch64 paketleri, `system/release/` ile hazırlama, sabit UUID'li ext4 imajı, `userdata.ext4.gz`, iki SHA-256 dosyası ve `release.json`. Docker gerekir ([dağıtım imajının oluşturulması](release-build.md)) |
+| `scripts/install-release.py` | Bu sistemi zaten çalıştıran bir telefona sürümü yeniden kurar: SD karta koyar, kurtarma ortamına yeniden başlatır, isteğe bağlı tam USERDATA yedeği alır, yazar ve geri okur ([dağıtımın kurulumu](installation.md)) |
+| `scripts/install-release-on-recovery.sh`, `recovery-install-job.sh`, `restore-userdata-on-recovery.sh` | Kurtarma tarafı: korumalı USERDATA yazımı ve tam geri okuma, USB kopsa da süren ayrı iş, yedeğin geri yüklenmesi |
+| `build-recovery-zip.py` | TWRP/OrangeFox için yüklenebilir ZIP ([grafik arayüzlü kurtarma](recovery.md)) |
+| `prepare-first-install.py` | Hâlâ stok Android'deki bir telefon için BOOT ve RECOVERY imajlarının tek üyeli Odin arşivleri, imajların geçmesi gereken bütün denetimlerle |
+| `scripts/first-install.py` | İlk kurulumun bilgisayar tarafı: arşivleri, sürümü ve microSD kartı denetler, adımları yazdırır, `--stage` her şeyi karta kopyalar. Odin'i asla çalıştırmaz, telefona dokunmaz |
+
+Hepsinin testleri, kurtarma ortamının kullandığı BusyBox ile `qemu-aarch64` altında benzetilmiş telefonlara karşı çalışır; hiçbiri henüz telefonda çalıştırılmadı (2026-10-27).
+
 ## Telefonla konuşmak
 
 | Araç | Amaç |
