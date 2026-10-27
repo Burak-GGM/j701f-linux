@@ -22,6 +22,7 @@ BYTES=11936989184
 BYNAME=/dev/block/platform/13540000.dwmmc0/by-name
 PART=mmcblk0p24
 SYS=/sys/class/block
+SYSDEV=/sys/dev/block
 PROC=/proc
 INPUT=/dev/input
 KEY_TIMEOUT=60
@@ -29,7 +30,7 @@ BOOT_MARK=bootcmd=j701f_ramboot
 # Host tests replace the device paths and the expected geometry; nothing else.
 if [ "${J701F_INSTALLER_TEST:-}" = 1 ]; then
     UUID=${T_UUID:-$UUID}; SECTORS=${T_SECTORS:-$SECTORS}; BYTES=${T_BYTES:-$BYTES}
-    BYNAME=${T_BYNAME:-$BYNAME}; SYS=${T_SYS:-$SYS}; PROC=${T_PROC:-$PROC}
+    BYNAME=${T_BYNAME:-$BYNAME}; SYS=${T_SYS:-$SYS}; PROC=${T_PROC:-$PROC}; SYSDEV=${T_SYSDEV:-$SYSDEV}
     INPUT=${T_INPUT:-$INPUT}; KEY_TIMEOUT=${T_KEY_TIMEOUT:-$KEY_TIMEOUT}
 fi
 
@@ -48,13 +49,6 @@ read_hash() {
     case "$v" in *[!0-9a-f]*|'') die "bad hash in $($BB basename "$1")" ;; esac
     [ "${#v}" -eq 64 ] || die "bad hash length in $($BB basename "$1")"
     printf '%s\n' "$v"
-}
-# Identity of a mount source: major:minor of a block device (following
-# symlinks); host tests use plain files, compared by their real path.
-devno() {
-    if [ -b "$1" ]; then $BB stat -L -c '%t:%T' "$1"
-    elif [ "${J701F_INSTALLER_TEST:-}" = 1 ] && [ -f "$1" ]; then echo "file:$($BB readlink -f "$1")"
-    fi
 }
 
 ui '================================'
@@ -88,7 +82,9 @@ else
     die "$real is not a block device"
 fi
 [ "$bytes" = "$BYTES" ] || die "USERDATA is $bytes bytes, expected $BYTES"
-ui "USERDATA: $real, $BYTES bytes"
+UD=$($BB cat "$SYS/$PART/dev")
+case "$UD" in *:*) ;; *) die "no major:minor for $PART" ;; esac
+ui "USERDATA: $real ($UD), $BYTES bytes"
 
 # ---- 3. BOOT must already hold the J701F Linux loader ---------------------
 [ -e "$BYNAME/BOOT" ] || die 'BOOT partition not found'
@@ -98,22 +94,26 @@ fi
 ui 'BOOT: J701F Linux loader present (left unchanged)'
 
 # ---- 4. The release: inside the ZIP, or j701f-release/ beside it ----------
-# Every mount of USERDATA, deepest first (so /sdcard binds go before /data).
+# Every mount of USERDATA by major:minor, so bind mounts and other names for
+# it are found too; deepest first (so /sdcard binds go before /data).
 userdata_mounts() {
-    want=$(devno "$real")
-    $BB awk '{print $1, $2}' "$PROC/mounts" | while read -r src mnt; do
-        case "$src" in /*) ;; *) continue ;; esac
-        [ "$(devno "$src")" = "$want" ] && printf '%s\n' "$mnt"
-    done | $BB awk '{print length, $0}' | $BB sort -rn | $BB cut -d' ' -f2-
+    $BB awk -v d="$UD" '$3 == d {print length($5), $5}' "$PROC/self/mountinfo" | $BB sort -rn | $BB cut -d' ' -f2-
 }
-on_userdata() {  # is the path inside a mount of USERDATA?
-    p=$1
-    for m in $(userdata_mounts); do
-        case "$p/" in "$m"/*) return 0 ;; esac
-    done
-    return 1
+# Accept a file only if its real path lies on a filesystem whose block device
+# is a physical SD card: whatever else (USERDATA, a bind of it, an emulated or
+# FUSE view of internal storage, tmpfs) is refused. Prints the real path.
+on_sd() {
+    p=$($BB readlink -f "$1") && [ -e "$p" ] || return 1
+    d=$($BB stat -c %d "$p") || return 1
+    mm=$(( (d >> 8) & 0xfff )):$(( (d & 0xff) | ((d >> 12) & 0xfff00) ))
+    [ "$mm" != "$UD" ] || return 1
+    node=$($BB readlink -f "$SYSDEV/$mm") && [ -d "$node" ] || return 1
+    disk=$node
+    [ -f "$node/partition" ] && disk=$($BB dirname "$node")
+    [ "$($BB cat "$disk/device/type" 2>/dev/null)" = SD ] || return 1
+    printf '%s\n' "$p"
 }
-on_userdata "$ZIP" && die 'the ZIP is on internal storage, which this install erases. Copy it to the SD card.'
+ZIP=$(on_sd "$ZIP") || die 'the ZIP is not on the SD card (internal storage is erased by this install). Copy it to the SD card.'
 
 embedded=no
 if $BB unzip -l "$ZIP" 2>/dev/null | $BB grep -q ' userdata.ext4.gz$'; then
@@ -129,9 +129,12 @@ if $BB unzip -l "$ZIP" 2>/dev/null | $BB grep -q ' userdata.ext4.gz$'; then
 else
     SRC=$($BB dirname "$ZIP")/j701f-release
     [ -d "$SRC" ] || die "no release found: put j701f-release/ next to the ZIP ($SRC)"
-    on_userdata "$SRC" && die 'the release is on internal storage, which this install erases. Use the SD card.'
     [ -f "$SRC/userdata.ext4.gz" ] || die 'userdata.ext4.gz is missing'
-    payload() { $BB cat "$SRC/userdata.ext4.gz"; }
+    for f in userdata.ext4.gz userdata.ext4.gz.sha256 userdata.ext4.sha256 release.json; do
+        [ ! -e "$SRC/$f" ] || on_sd "$SRC/$f" >/dev/null || die "$f is not on the SD card (a link to internal storage?)"
+    done
+    PAYLOAD=$(on_sd "$SRC/userdata.ext4.gz")
+    payload() { $BB cat "$PAYLOAD"; }
     ui "Release: $SRC"
 fi
 want_gz=$(read_hash "$SRC/userdata.ext4.gz.sha256")

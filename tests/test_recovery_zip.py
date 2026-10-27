@@ -21,6 +21,7 @@ QEMU = shutil.which('qemu-aarch64') or shutil.which('qemu-aarch64-static')
 UUID = '4ce26b55-8a59-4fb7-aad4-919a5c2cefeb'
 SIZE = 4 << 20
 KEY_UP, KEY_DOWN = 115, 114
+SHM = Path('/dev/shm')
 
 
 def key_event(code):
@@ -46,10 +47,10 @@ class RecoveryZipTests(unittest.TestCase):
 
     def phone(self, *, bootloader='J701FXXU7CUH1', boot_mark=True, sectors=SIZE // 512,
               key=KEY_UP, gz_hash=None, raw_hash=None, embed=False, zip_on_userdata=False,
-              json_uuid=UUID):
+              json_uuid=UUID, sd_type='SD', zip_link_to_internal=False, userdata_mounted=False):
         d = Path(tempfile.mkdtemp(dir=self.tmp.name))
         (d / 'dev').mkdir(); (d / 'byname').mkdir(); (d / 'sys/mmcblk0p24').mkdir(parents=True)
-        (d / 'proc').mkdir(); (d / 'input').mkdir(); (d / 'sd').mkdir()
+        (d / 'proc/self').mkdir(parents=True); (d / 'input').mkdir(); (d / 'sd').mkdir()
         userdata = d / 'dev/mmcblk0p24'
         userdata.write_bytes(b'\xa5' * SIZE)
         (d / 'byname/USERDATA').symlink_to(userdata)
@@ -57,11 +58,23 @@ class RecoveryZipTests(unittest.TestCase):
         (d / 'byname/BOOT').symlink_to(d / 'dev/boot')
         (d / 'sys/mmcblk0p24/uevent').write_text('MAJOR=179\nMINOR=24\nPARTN=24\nPARTNAME=USERDATA\n')
         (d / 'sys/mmcblk0p24/size').write_text(f'{sectors}\n')
+        (d / 'sys/mmcblk0p24/dev').write_text('179:24\n')
+        # /sys/dev/block: the SD card's filesystem is the temporary directory's;
+        # "internal storage" (/dev/shm, another filesystem) is the eMMC.
+        sysdev = d / 'sysdev'; sysdev.mkdir()
+        for path, kind, disk in ((d / 'sd', sd_type, 'mmcblk1'), (SHM, 'MMC', 'mmcblk0')):
+            st = os.stat(path)
+            part = d / 'devices' / disk / (disk + 'p1')
+            part.mkdir(parents=True, exist_ok=True)
+            (part / 'partition').write_text('1\n')
+            (d / 'devices' / disk / 'device').mkdir(exist_ok=True)
+            (d / 'devices' / disk / 'device/type').write_text(kind + '\n')
+            (sysdev / f'{os.major(st.st_dev)}:{os.minor(st.st_dev)}').symlink_to(part)
         (d / 'proc/cmdline').write_text(f'console=ram androidboot.bootloader={bootloader} androidboot.mode=recovery\n')
-        mounts = ''
-        if zip_on_userdata:
-            mounts = f'{userdata} {d / "sd"} ext4 rw 0 0\n'
-        (d / 'proc/mounts').write_text(mounts + 'tmpfs /tmp tmpfs rw 0 0\n')
+        info = '22 1 0:20 / /tmp rw - tmpfs tmpfs rw\n'
+        if userdata_mounted:
+            info += f'30 1 179:24 / {d / "not-a-mount"} rw - ext4 /dev/block/mmcblk0p24 rw\n'
+        (d / 'proc/self/mountinfo').write_text(info)
         if key is not None:
             (d / 'input/event0').write_bytes(key_event(key))
         else:
@@ -76,6 +89,10 @@ class RecoveryZipTests(unittest.TestCase):
                 'root_version': 'TEST_0_1'}, indent=2) + '\n',
         }
         zpath = d / 'sd/j701f-install.zip'
+        internal = None
+        if zip_on_userdata or zip_link_to_internal:
+            internal = Path(tempfile.mkdtemp(dir=SHM, prefix='j701f-internal-'))
+            self.addCleanup(shutil.rmtree, internal)
         cmd = ['python3', str(ROOT / 'tools/build-recovery-zip.py'), str(zpath)]
         if embed:
             rel = d / 'staging'
@@ -88,18 +105,37 @@ class RecoveryZipTests(unittest.TestCase):
             rel.mkdir()
             for name, data in release.items():
                 (rel / name).write_bytes(data if isinstance(data, bytes) else data.encode())
+        if internal:
+            cmd[2] = str(internal / 'j701f-install.zip')
         subprocess.run(cmd, check=True, capture_output=True)
+        if zip_link_to_internal:
+            zpath.symlink_to(internal / 'j701f-install.zip')
+        elif zip_on_userdata:
+            zpath = internal / 'j701f-install.zip'
+            if not embed:
+                shutil.move(str(d / 'sd/j701f-release'), str(internal / 'j701f-release'))
+        self.last_env = None
         work = d / 'work'
         with zipfile.ZipFile(zpath) as z:
             z.extractall(work, [n for n in z.namelist() if n.startswith('j701f/')])
         env = dict(os.environ, BB=str(self.bb), J701F_INSTALLER_TEST='1',
                    T_UUID=UUID, T_SECTORS=str(SIZE // 512), T_BYTES=str(SIZE),
                    T_BYNAME=str(d / 'byname'), T_SYS=str(d / 'sys'), T_PROC=str(d / 'proc'),
-                   T_INPUT=str(d / 'input'), T_KEY_TIMEOUT='3')
+                   T_INPUT=str(d / 'input'), T_KEY_TIMEOUT='3', T_SYSDEV=str(sysdev))
+        self.runs = getattr(self, 'runs', {})
+        self.runs[d] = (env, work, zpath)
         result = subprocess.run([str(self.bb), 'sh', str(work / 'j701f/installer.sh'), '1', str(zpath)],
                                 env=env, capture_output=True, text=True, timeout=300)
         ui = '\n'.join(l[9:] for l in result.stdout.splitlines() if l.startswith('ui_print '))
         return result.returncode, ui, userdata.read_bytes(), d
+
+    def rerun(self, d):
+        env, work, zpath = self.runs[d]
+        env = dict(env, T_KEY_TIMEOUT='3')
+        (d / 'input/event0').write_bytes(key_event(KEY_UP))
+        result = subprocess.run([str(self.bb), 'sh', str(work / 'j701f/installer.sh'), '1', str(zpath)],
+                                env=env, capture_output=True, text=True, timeout=300)
+        return result.returncode, '\n'.join(l[9:] for l in result.stdout.splitlines() if l.startswith('ui_print '))
 
     def assert_untouched(self, data):
         self.assertEqual(data, b'\xa5' * SIZE)
@@ -158,7 +194,38 @@ class RecoveryZipTests(unittest.TestCase):
     def test_zip_on_internal_storage_refused(self):
         code, ui, data, _ = self.phone(zip_on_userdata=True)
         self.assertNotEqual(code, 0)
-        self.assertIn('internal storage', ui)
+        self.assertIn('the ZIP is not on the SD card', ui)
+        self.assert_untouched(data)
+
+    def test_zip_symlinked_from_sd_to_internal_storage_refused(self):
+        code, ui, data, _ = self.phone(zip_link_to_internal=True, embed=True)
+        self.assertNotEqual(code, 0)
+        self.assertIn('the ZIP is not on the SD card', ui)
+        self.assert_untouched(data)
+
+    def test_release_file_linked_to_internal_storage_refused(self):
+        code, ui, data, d = self.phone(key=None, sd_type='SD')
+        # Rebuild the case: the payload in j701f-release/ is a link into internal storage.
+        internal = Path(tempfile.mkdtemp(dir=SHM, prefix='j701f-internal-'))
+        self.addCleanup(shutil.rmtree, internal)
+        rel = d / 'sd/j701f-release'
+        shutil.move(str(rel / 'userdata.ext4.gz'), str(internal / 'userdata.ext4.gz'))
+        (rel / 'userdata.ext4.gz').symlink_to(internal / 'userdata.ext4.gz')
+        code, ui = self.rerun(d)
+        self.assertNotEqual(code, 0)
+        self.assertIn('userdata.ext4.gz is not on the SD card', ui)
+        self.assert_untouched((d / 'dev/mmcblk0p24').read_bytes())
+
+    def test_storage_that_is_not_an_sd_card_refused(self):
+        code, ui, data, _ = self.phone(sd_type='MMC')
+        self.assertNotEqual(code, 0)
+        self.assertIn('not on the SD card', ui)
+        self.assert_untouched(data)
+
+    def test_userdata_mount_found_by_major_minor_must_be_unmounted(self):
+        code, ui, data, _ = self.phone(userdata_mounted=True)
+        self.assertNotEqual(code, 0)
+        self.assertIn('cannot unmount', ui)
         self.assert_untouched(data)
 
     def test_read_back_mismatch_reported_as_failure(self):
