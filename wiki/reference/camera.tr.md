@@ -44,7 +44,17 @@ Samsung'un kamera yazılımından hiçbir şey kullanılmıyor - ne sürücüsü
 - Sensör ayarı: renk matrisi ve mercek gölgeleme düzeltmesi yok; libcamera iki sensörü de tanımıyor ve bunu söylüyor.
 - Otomatik pozlama yavaş tırmanıyor: loş bir odada resmin aydınlanması birkaç saniye sürüyor.
 - Görüntü döndürmesi: arka kamera için ilk tahmin fotoğrafları tepetaklak verdi (telefon sahibinin bildirimi); şimdi 270°. Ön kameranın 90° değeri ayna varsayımıdır, denetlenmedi.
-- Plasma Camera'da video kaydı boş dosya üretiyor; nedeni bulunamadı.
+- Plasma Camera'da video kaydı boş dosya üretiyor. Telefonda henüz kanıtlanmadı; 2026-10-27'de telefon dışında yapılan inceleme (aşağıda) belleğe işaret ediyor.
+
+## Video kaydı: bilgisayarın gösterebildikleri
+
+Plasma Camera 2.1.1 kayıt yaparken her önizleme görüntüsünü (bir `QImage`) QtMultimedia'nın `QVideoFrameInput`'una verir; `QMediaRecorder` MP4, H.264 ve MP3'e ayarlıdır ve varsayılan mikrofon da eklidir. `tools/camera/qt-recorder-probe.cpp` tam olarak bunu yapar; sürümün kendi AArch64 Qt 6.11.1'ine karşı derlenip bilgisayarda `qemu-aarch64` altında çalıştırıldı:
+
+- **Yolun kendisi çalışıyor.** Mikrofonlu da mikrofonsuz da deneme programı geçerli bir MP4 (H.264 ve MP3) yazıyor. Qt 6.11 kayıtta V4L2 donanım kodlayıcılarını hiç kullanmıyor (kodlayıcı listesi `*_v4l2m2m` kodlayıcılarını kapatıyor); kodlayıcı her zaman varsayılan `medium` ayarlı yazılımsal `libx264`, Qt yalnızca kaliteyi (`crf`) ayarlıyor.
+- **Renk biçimi.** RGB görüntülerden Qt YUV 4:4:4 seçiyor; dosya H.264 *High 4:4:4 Predictive* oluyor ve donanım çözücüleri (telefonun MFC'si de) ve pek çok oynatıcı bunu oynatamıyor. Düzlemsel YUV 4:2:0 kareler sıradan *High* profilini veriyor ve daha çok karenin geçmesini sağlıyor (kamera boyutunda 60 karenin 18'i yerine 56'sı).
+- **Bellek.** Kayıt sürecinin en yüksek bellek kullanımı, 60 kare: 320 × 240'ta 195 MB, 960 × 540'ta 485 MB, 1280 × 720'de 622 MB, **2072 × 1552'de 1,07 GB** — arka kameranın kare boyutu; Plasma Camera'nın varsayılan "Auto" çözünürlüğü bu boyutta kaydediyor. Telefonda masaüstü çalışırken, kameranın kendi tamponlarından önce, yaklaşık 1,2 GB boş bellek var; bu noktada sistem yoğun biçimde takas alanına yazıyor ve `earlyoom` (`-m 4 -s 8`) en büyük süreci, yani kamera uygulamasını öldürüyor. İkisi de boş ya da yarım bir dosya bırakır.
+
+Telefonda doğrulamak için: varsayılan ayarla kayıt yaparken `free -m`, takas alanı ve earlyoom günlüğü izlenir; sonra Plasma Camera'nın video çözünürlüğü 540p'ye ayarlanır (`~/.config/plasmacamerarc`, `General` grubunda `videoResolution=1`) ve kayıt tekrarlanır. Kalıcı çözüm, Plasma Camera'dan YUV 4:2:0 kareler göndermek, sensör boyutunun altında kaydetmek ve mümkünse daha hafif bir x264 ayarı kullanmak olur; Qt bu ayarı dışarı açmıyor.
 - Bloğun saatleri, güç alanı ve IOMMU'su için yazmaç yazımları yerine düzgün sürücüler; yoklama yerine alıcının kesmesi; kare başına kopyasız çalışma.
 - libcamera yerine PipeWire'ın kamera kapısını ya da düz V4L2'yi kullanan uygulamalar denenmedi.
 

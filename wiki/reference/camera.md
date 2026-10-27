@@ -44,7 +44,17 @@ Nothing of Samsung's camera software is used - not its driver, not its closed im
 - Sensor tuning: no colour matrix, no lens-shading correction; libcamera knows neither sensor and says so.
 - Automatic exposure climbs slowly: in a dim room the picture needs a few seconds to brighten.
 - Image rotation: the first guess for the rear camera gave upside-down photographs (the owner's report); it is 270° now. The front camera's 90° is the mirrored assumption and unchecked.
-- Video recording in Plasma Camera produces an empty file; cause not found.
+- Video recording in Plasma Camera produces an empty file. Not yet proven on the phone; the off-phone investigation of 2026-10-27 (below) points to memory.
+
+## Video recording: what the computer can show
+
+Plasma Camera 2.1.1 records by handing each preview image (a `QImage`) to QtMultimedia's `QVideoFrameInput`, with `QMediaRecorder` set to MP4, H.264 and MP3, and the default microphone attached. `tools/camera/qt-recorder-probe.cpp` repeats exactly that, built against the release's own AArch64 Qt 6.11.1 and run under `qemu-aarch64` on the computer:
+
+- **The path itself works.** With and without a microphone the probe writes a valid MP4 (H.264 plus MP3). Qt 6.11 does not use the V4L2 hardware encoders for recording at all (its codec list switches `*_v4l2m2m` encoders off), so the encoder is always the software `libx264` with its default `medium` preset; Qt only sets the quality (`crf`).
+- **Colour format.** From RGB images Qt picks YUV 4:4:4, so the file is H.264 *High 4:4:4 Predictive*, which hardware decoders (the phone's MFC included) and many players cannot play. Planar YUV 4:2:0 frames give ordinary *High* profile and let more frames through (56 of 60 instead of 18 at camera size).
+- **Memory.** Peak memory of the recording process, 60 frames: 195 MB at 320 × 240, 485 MB at 960 × 540, 622 MB at 1280 × 720, **1.07 GB at 2072 × 1552** — the rear camera's frame size, which Plasma Camera's default "Auto" resolution records at. The phone has about 1.2 GB free with the desktop running, before the camera's own buffers; at that point the system swaps heavily and `earlyoom` (`-m 4 -s 8`) kills the largest process, the camera application. Either leaves an empty or truncated file.
+
+To confirm on the phone: record with the default setting while watching `free -m`, the swap and the earlyoom log; then set Plasma Camera's video resolution to 540p (`videoResolution=1` in `~/.config/plasmacamerarc`, group `General`) and repeat. A lasting fix would send YUV 4:2:0 frames from Plasma Camera, record below the sensor size, and ideally use a lighter x264 preset, which Qt does not expose.
 - Proper drivers for the block's clocks, power domain and IOMMU instead of register writes; the receiver's interrupt instead of polling; no copy per frame.
 - Applications that use PipeWire's camera portal or plain V4L2 instead of libcamera have not been tried.
 
