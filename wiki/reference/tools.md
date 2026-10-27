@@ -73,6 +73,7 @@ Tests for all of them run against simulated phones under `qemu-aarch64` with the
 | Tool | Purpose |
 | --- | --- |
 | `usb-console.py` | Serial shell over USB (`/dev/ttyACM0`); works on both kernels and inside the initramfs |
+| `usb-run.py` | Run a local shell script on the phone over the USB serial shell, as root, with its output and exit status; for a phone without network or SSH key (a fresh release, the recovery). `phone-health.sh --usb` runs the health check this way |
 | SSH | `ssh burak-alpine@<phone address>`; the address is fixed on mainline because the MAC address is fixed. The host tools read it from `.phone-ip` in the repository root (one line, ignored by git) or from `J701F_PHONE_IP` |
 | `i2c-peek.c` | Tiny static program to read or write one I²C register on the phone |
 | `reboot-recovery-static.c` | Reboot into the `RECOVERY` slot |

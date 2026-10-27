@@ -73,6 +73,7 @@ Hepsinin testleri, kurtarma ortamının kullandığı BusyBox ile `qemu-aarch64`
 | Araç | Amaç |
 | --- | --- |
 | `usb-console.py` | USB üzerinden seri kabuk (`/dev/ttyACM0`); iki çekirdekte ve initramfs içinde çalışır |
+| `usb-run.py` | Yerel bir kabuk betiğini telefonda USB seri kabuk üzerinden root olarak çalıştırır, çıktısını ve çıkış durumunu getirir; ağı ya da SSH anahtarı olmayan bir telefon için (yeni bir sürüm, kurtarma ortamı). `phone-health.sh --usb` sağlık denetimini bu yolla yapar |
 | SSH | `ssh burak-alpine@<telefon adresi>`; MAC adresi sabit olduğu için mainline'da adres sabittir. Ana makine araçları adresi depo kökündeki `.phone-ip` dosyasından (tek satır, git yok sayar) ya da `J701F_PHONE_IP` değişkeninden okur |
 | `i2c-peek.c` | Telefonda tek bir I²C yazmacını okuyan ya da yazan minik statik program |
 | `reboot-recovery-static.c` | `RECOVERY` bölümüne yeniden başlat |

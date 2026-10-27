@@ -4,6 +4,8 @@
 # as one line. Changes nothing on the phone. Exit status 1 when something FAILs.
 #
 #   tools/phone-health.sh            (J701F_PHONE_IP overrides the address)
+#   tools/phone-health.sh --usb      the same checks over the USB serial shell,
+#                                    for a phone without network or SSH key
 set -uo pipefail
 cd "$(dirname "$0")/.."
 H=burak-alpine@${J701F_PHONE_IP:-$(cat .phone-ip 2>/dev/null || echo j701f.local)}
@@ -11,6 +13,13 @@ O=(-o BatchMode=yes -o ConnectTimeout=6)
 [ -f build/phone-ssh-known-hosts ] && O+=(-o StrictHostKeyChecking=yes -o UserKnownHostsFile=build/phone-ssh-known-hosts)
 WANT_ID=$(python3 -c "import json;print(json.load(open('build/kernel/boot-slot.json')).get('kernel_build_id',''))" 2>/dev/null || true)
 
+if [ "${1:-}" = --usb ]; then
+    # The phone-side part below, run through tools/usb-run.py instead of SSH.
+    tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
+    sed -n "/^ssh .*<<'REMOTE'$/,/^REMOTE$/p" "$0" | sed '1d;$d' > "$tmp"
+    python3 tools/usb-run.py "$tmp" WANT_ID="$WANT_ID"
+    exit $?
+fi
 ssh "${O[@]}" "$H" WANT_ID="$WANT_ID" sh -s <<'REMOTE'
 fail=0
 ok()   { echo "ok    $*"; }

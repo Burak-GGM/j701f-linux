@@ -87,7 +87,24 @@ build/wiki-venv/bin/pip install -r wiki/requirements.txt
 build/wiki-venv/bin/mkdocs serve
 ```
 
-## What is not in this repository
+## Installing
+
+USERDATA holds the Alpine system; BOOT and RECOVERY hold the project's kernel loader and
+recovery. Three routes, all described on the [installation page](wiki/reference/installation.md):
+
+- **Reinstalling a phone that already runs this system:** `scripts/install-release.py`
+  stages a release from `tools/build-release.py` on the SD card, can back up the old USERDATA
+  first, and writes and fully reads back the new one from the RAM recovery. First run on the
+  project's phone on 2026-10-27: backup, write, read-back and boot all verified.
+- **From TWRP or OrangeFox:** a flashable ZIP from `tools/build-recovery-zip.py`
+  ([recovery page](wiki/reference/recovery.md)); tested only on a simulated phone so far.
+- **From stock Android:** Odin archives from `tools/prepare-first-install.py` and the host-side
+  checks of `scripts/first-install.py`; a [plan](docs/installer-first-install-plan.md), not
+  yet run on hardware.
+
+All of them erase USERDATA, Android's data included.
+
+
 
 - Samsung firmware, the stock ROM, `odin4`, the OrangeFox and TWRP images used in the first
   stage, and the device's own data (EFS and other partition backups).
