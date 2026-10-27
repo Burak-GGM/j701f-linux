@@ -16,6 +16,7 @@ IP addresses in these notes have been replaced by addresses in `192.168.1.0/24`.
 | [j701f-display.md](j701f-display.md) | Bring-up of the native display driver |
 | [panfrost-bringup.md](panfrost-bringup.md), [kernel-build.md](kernel-build.md) | GPU and kernel build notes |
 | [recovery-design.md](recovery-design.md) | Design of the graphical recovery |
+| [recovery-zip-device-test.md](recovery-zip-device-test.md) | Which OrangeFox to use for the release ZIP's device test, and the way back to rec8 |
 
 ## The first stages (historical)
 

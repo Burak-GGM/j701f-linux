@@ -77,3 +77,8 @@ LVGL (recovery UI, added by Claude 2026-10-10):
 - `udmabuf` module: `drivers/dma-buf/udmabuf.c` of Linux 7.1.13 (GPL-2.0), built out of tree with `tools/kmod/udmabuf-out-of-tree.patch`.
 - v4l2loopback 0.15.1 (GPL-2.0, github.com/v4l2loopback/v4l2loopback, commit `7546a42a...`): fetched and built with `tools/kmod/v4l2loopback-linux-7.1.patch`, not installed.
 - Alpine packages installed for it: `libcamera-tools`, `py3-numpy`, `py3-pillow`.
+
+## OrangeFox recovery for the release ZIP test (added by Claude 2026-10-27)
+
+- `OrangeFox-j7velte-beta@R11.1.zip` and `OrangeFox-j7velte-stable@R11.0_1.zip`, downloaded from the official OrangeFox API mirror (`dl.orangefox.download`, release ids `6103cb9ddfa9fd3c4edb5762` and `5fa2585c18a4f5027b916617`). Their MD5 values and those of the contained `recovery.img` match the API. R11.1's `recovery.img` (SHA-256 `5bbcb385...`) is byte-identical to the user-supplied `original/OrangeFox-recovery.img`, which gives that image the provenance it lacked. Licence: GPL-3.0-or-later (OrangeFox), components under their own licences. Kept in `build/third-party/recoveries/`, not in the repository. Details: [recovery-zip-device-test.md](recovery-zip-device-test.md).
+- No official TWRP exists for j7velte; the 2018 TWRP tar in `tools/` has no known origin and is not used.
