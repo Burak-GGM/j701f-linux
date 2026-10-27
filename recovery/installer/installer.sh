@@ -232,6 +232,11 @@ progress 0.30
 [ -b "$real" ] && { $BB blockdev --setrw "$real" || die 'cannot make USERDATA writable'; }
 payload | $BB gunzip -c | $BB dd of="$real" bs=4194304 conv=fsync 2>/dev/null || die 'write error'
 $BB sync
+# Read back from the eMMC, not from the page cache the write just filled.
+if [ -b "$real" ]; then
+    $BB blockdev --flushbufs "$real" || die 'cannot flush the USERDATA buffers before read-back'
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+fi
 progress 0.65
 ui 'Reading back all of USERDATA...'
 [ "$(sha "$real")" = "$want_raw" ] || die 'read-back SHA-256 does not match'
