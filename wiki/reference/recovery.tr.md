@@ -99,6 +99,11 @@ Bölümde daha önce duran üreticinin 3.18 sistemi bütün olarak (38 MiB) tele
 
 ## Bir sürümü TWRP ya da OrangeFox'tan kurmak
 
+!!! danger "Bu işlem telefonun verilerini siler ve telefonu açılamaz bırakabilir"
+    ZIP **USERDATA'nın tamamını siler**: bütün Android uygulamaları, tüm uygulama verileri ve iç depolamanın tamamı (fotoğraflar, indirilenler, belgeler). Geri alınamaz; saklamak istediğiniz her şeyi önce bir bilgisayara kopyalayın.
+
+    Kurulum başarısız olur ya da yarıda kesilirse (pil biter, SD kart çıkarılır, yazma sırasında bozuk bir yük fark edilir), USERDATA eksik kalır ve **telefon normal şekilde açılmaz** (yumuşak brick). Onarılabilir, ama yalnızca bir kurtarma ortamından (ZIP yeniden çalıştırılır) ya da hiçbir kurtarma ortamı açılmıyorsa Download Mode'dan Odin ile. Ancak ikisine de erişebiliyorsanız kullanın.
+
 RECOVERY'de bu projenin kurtarma ortamı yerine hâlâ TWRP ya da OrangeFox bulunan bir telefon için `tools/build-recovery-zip.py`, bir sürümü USERDATA'ya yazan, kurtarmadan yüklenebilir bir ZIP üretir. ZIP **yalnızca USERDATA'ya yazar**: BOOT ve RECOVERY en fazla okunur; EFS, modem ve önyükleyici hiç açılmaz. Genel adımlar ve sürümün kendisi kurulum sayfasında anlatılır.
 
 | | |
@@ -114,7 +119,7 @@ Bir şey yazılmadan önce aşağıdakilerin hepsi sağlanmıyorsa ZIP kurulumu 
 3. BOOT'ta projenin Linux yükleyicisi zaten vardır (U-Boot ortamı `bootcmd=j701f_ramboot` içerir; derlenmiş 86 BOOT imajının hepsinde ve telefonun BOOT bölümünde denetlendi). Bu yoksa Android verisini silmek, hiçbir şeyi başlatamayan bir telefon bırakır.
 4. ZIP ve sürümün her dosyası, sembolik bağlantılar izlendikten sonra, blok aygıtı fiziksel bir SD kart olan bir dosya sistemindedir (`/sys/dev/block/MAJ:MIN/…/device/type` değeri `SD`). Gerisi reddedilir: iç depolama, onun bir bağlaması ya da emüle edilmiş görünümü, SD karttan ona giden bir bağlantı. USERDATA'nın bağlı olduğu yerler adla değil, `/proc/self/mountinfo` içindeki major:minor ile bulunur.
 5. `release.json` bu bölümü tarif eder (sektör, bayt, dosya sistemi UUID'si, `j7velte`); sıkıştırılmış yük SHA-256 değeriyle eşleşir ve eksiksiz bir gzip akışıdır.
-6. USERDATA'nın tamamının (Android uygulamaları, veriler, fotoğraflar) silineceğine dair uyarıdan sonraki 60 saniye içinde **Ses Açma** tuşuna basılır. Ses Kısma ya da hiç tuşa basmamak iptal eder. Tuşlar doğrudan `/dev/input`'tan okunur; bu yüzden TWRP'de de çalışır.
+6. Ekranda USERDATA'nın tamamının (Android uygulamaları, veriler, iç depolama) kalıcı olarak silineceğine ve başarısız bir kurulumun telefonu normal açılamaz bırakabileceğine dair uyarıdan sonraki 60 saniye içinde **Ses Açma** tuşuna basılır. Ses Kısma ya da hiç tuşa basmamak iptal eder. Tuşlar doğrudan `/dev/input`'tan okunur; bu yüzden TWRP'de de çalışır.
 
 Ardından USERDATA'nın tüm bağlantılarını kaldırır (kurtarmanın MTP'si bölümü tutuyorsa durur ve MTP'nin kapatılmasını ister), imajı yazar, bölümün **tamamını** geri okuyup SHA-256'sını karşılaştırır ve dosya sistemi UUID'sini denetler. Sonuç (`PASS` ya da `FAIL` ve günlük) sürümün yanındaki `install.status` dosyasına yazılır. Yazma yarıda kalırsa USERDATA eksik kalır; BOOT ve RECOVERY'ye dokunulmamıştır ve ZIP yeniden çalıştırılabilir.
 

@@ -162,9 +162,17 @@ ui 'Release verified.'
 # ---- 5. Confirmation with the volume keys ---------------------------------
 ui ' '
 ui '!!! THIS ERASES ALL OF USERDATA !!!'
-ui 'Android apps, data and internal storage'
-ui '(photos, downloads) are deleted for good.'
-ui 'BOOT, RECOVERY and EFS are not touched.'
+ui 'Every Android app, all data and the whole'
+ui 'internal storage (photos, downloads,'
+ui 'documents) are deleted for good.'
+ui 'There is no undo. Back them up first.'
+ui ' '
+ui 'If the install fails or is interrupted'
+ui '(battery, SD card removed), the phone may'
+ui 'NOT start normally any more (soft brick).'
+ui 'You may then need this recovery or'
+ui 'Download Mode (Odin) to repair it.'
+ui 'BOOT, RECOVERY and EFS are not written.'
 ui ' '
 ui "Volume UP   = erase and install"
 ui "Volume DOWN = cancel ($KEY_TIMEOUT s: cancel)"
@@ -215,7 +223,8 @@ finish() {
 trap finish EXIT
 die() {
     ui "FAILED: $*"
-    ui 'USERDATA is incomplete: Linux will not start. BOOT and RECOVERY are unchanged; run the installer again.'
+    ui 'USERDATA is incomplete: the phone will not start normally. BOOT and RECOVERY are unchanged:'
+    ui 'stay in this recovery and run the installer again; if the recovery is gone too, use Download Mode.'
     exit 1
 }
 ui 'Writing USERDATA. Keep the phone powered and the SD card in.'

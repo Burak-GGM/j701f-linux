@@ -99,6 +99,11 @@ The vendor 3.18 system that used to be in the slot is kept whole (38 MiB) on the
 
 ## Installing a release from TWRP or OrangeFox
 
+!!! danger "This erases the phone's data and can leave it unable to start"
+    The ZIP **deletes all of USERDATA**: every Android app, all app data and the whole internal storage (photos, downloads, documents). There is no undo; copy anything you want to keep to a computer first.
+
+    If the installation fails or is interrupted (empty battery, SD card pulled out, a damaged payload found while writing), USERDATA is left incomplete and **the phone will not start normally** (a soft brick). It can be repaired, but only from a recovery (run the ZIP again) or, if no recovery starts either, from Download Mode with Odin. Use it only if you can reach both.
+
 For a phone that still has TWRP or OrangeFox in RECOVERY instead of this project's recovery, `tools/build-recovery-zip.py` builds a flashable ZIP that writes a release into USERDATA. It writes **USERDATA only**: BOOT and RECOVERY are read at most, and EFS, the modem and the bootloader are never opened. The general steps and the release itself are described on the installation page.
 
 | | |
@@ -114,7 +119,7 @@ Before anything is written, the ZIP refuses unless all of this holds:
 3. BOOT already holds the project's Linux loader (its U-Boot environment contains `bootcmd=j701f_ramboot`; checked in all 86 built BOOT images and in the phone's BOOT partition). Without it, erasing Android's data would leave a phone that starts nothing.
 4. The ZIP and every release file, after following symbolic links, lie on a filesystem whose block device is a physical SD card (`/sys/dev/block/MAJ:MIN/…/device/type` is `SD`). Anything else is refused: internal storage, a bind or emulated view of it, a link from the SD card into it. Mounts of USERDATA are found by major:minor in `/proc/self/mountinfo`, not by name.
 5. `release.json` describes this partition (sectors, bytes, filesystem UUID, `j7velte`), the compressed payload matches its SHA-256 and is a complete gzip stream.
-6. **Volume Up** is pressed within 60 seconds after a warning that all of USERDATA (Android apps, data, photos) will be erased. Volume Down or no key cancels. The keys are read straight from `/dev/input`, so this works in TWRP too.
+6. **Volume Up** is pressed within 60 seconds after a warning on screen that all of USERDATA (Android apps, data, internal storage) will be erased for good and that a failed installation can leave the phone unable to start normally. Volume Down or no key cancels. The keys are read straight from `/dev/input`, so this works in TWRP too.
 
 Then it unmounts every mount of USERDATA (if the recovery's MTP holds it, it stops and asks to switch MTP off), writes the image, reads back the **whole** partition and compares its SHA-256, and checks the filesystem UUID. The result (`PASS` or `FAIL` and the log) is written to `install.status` next to the release. If writing fails half-way, USERDATA is incomplete; BOOT and RECOVERY are untouched and the ZIP can be run again.
 
