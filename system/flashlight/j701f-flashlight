@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+# Written by Claude 2026-10-27. "Flashlight" app: two large buttons that switch
+# the rear and the front flash LED (S2MU005, torch mode) on and off. The udev
+# rule from system/flashlight-udev.rules makes both brightness files writable
+# by the user. Both LEDs go off when the window closes. (A QML version could
+# read the files but not write them: Qt's XMLHttpRequest PUT does not reach sysfs.)
+import locale
+import os
+# GTK's GL renderer fails to compile its shaders on Panfrost here ("Failed to
+# choose spill node") and shows no window; two buttons need no GPU.
+os.environ.setdefault('GSK_RENDERER', 'cairo')
+import gi
+gi.require_version('Gtk', '4.0')
+from gi.repository import GLib, Gtk
+
+TR = (locale.getlocale()[0] or '').startswith('tr')
+LEDS = (('white:flash', 'Arka' if TR else 'Rear'),
+        ('white:front-flash', 'Ön' if TR else 'Front'))
+CSS = b"""
+button.lamp { border-radius: 9999px; min-width: 220px; min-height: 220px; font-size: 26px; font-weight: bold; }
+button.lamp.on { background: #ffd54f; color: #3e2723; }
+"""
+
+
+def path(led, name):
+    return f'/sys/class/leds/{led}/{name}'
+
+
+def read(led, name):
+    try:
+        with open(path(led, name)) as f:
+            return int(f.read().strip() or 0)
+    except (OSError, ValueError):
+        return -1
+
+
+def write(led, value):
+    try:
+        with open(path(led, 'brightness'), 'w') as f:
+            f.write(f'{value}\n')
+    except OSError:
+        pass
+
+
+class Lamp(Gtk.Button):
+    def __init__(self, led, label):
+        super().__init__()
+        self.led, self.label = led, label
+        self.add_css_class('lamp')
+        self.set_halign(Gtk.Align.CENTER)
+        self.connect('clicked', lambda *_: self.set_on(not self.is_on()))
+        self.refresh()
+
+    def is_on(self):
+        return read(self.led, 'brightness') > 0
+
+    def set_on(self, on):
+        top = read(self.led, 'max_brightness')
+        if top > 0:
+            write(self.led, top if on else 0)
+        self.refresh()
+
+    def refresh(self):
+        if read(self.led, 'max_brightness') <= 0:
+            state, on = ('yok' if TR else 'not found'), False
+            self.set_sensitive(False)
+        else:
+            on = self.is_on()
+            state = ('AÇIK' if TR else 'ON') if on else ('kapalı' if TR else 'off')
+        self.set_label(f'{self.label}\n{state}')
+        (self.add_css_class if on else self.remove_css_class)('on')
+        return True
+
+
+def activate(app):
+    provider = Gtk.CssProvider()
+    provider.load_from_data(CSS)
+    win = Gtk.ApplicationWindow(application=app, title='Fener' if TR else 'Flashlight')
+    Gtk.StyleContext.add_provider_for_display(win.get_display(), provider,
+                                              Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=40,
+                  valign=Gtk.Align.CENTER, halign=Gtk.Align.CENTER)
+    lamps = [Lamp(led, label) for led, label in LEDS]
+    for lamp in lamps:
+        box.append(lamp)
+    win.set_child(box)
+    # The quick-settings tile may change the rear LED while this window is open.
+    GLib.timeout_add_seconds(1, lambda: all(lamp.refresh() for lamp in lamps))
+
+    def closing(*_):
+        for lamp in lamps:
+            lamp.set_on(False)
+        return False
+    win.connect('close-request', closing)
+    win.present()
+
+
+app = Gtk.Application(application_id='org.j701f.flashlight')
+app.connect('activate', activate)
+app.run()

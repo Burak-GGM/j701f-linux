@@ -165,7 +165,8 @@ copy system/camera/j701f-photo usr/local/bin/j701f-photo
 copy system/camera/j701f-camera-front.desktop usr/local/share/applications/j701f-camera-front.desktop 644
 copy system/camera/j701f-camera-rear.desktop usr/local/share/applications/j701f-camera-rear.desktop 644
 copy system/flashlight/j701f-front-flash usr/local/bin/j701f-front-flash
-copy system/flashlight/j701f-front-flash.desktop usr/local/share/applications/j701f-front-flash.desktop 644
+copy system/flashlight/j701f-flashlight usr/local/bin/j701f-flashlight
+copy system/flashlight/org.j701f.flashlight.desktop usr/local/share/applications/org.j701f.flashlight.desktop 644
 
 for level_service in \
     sysinit:cgroups sysinit:devfs sysinit:procfs sysinit:sysfs \

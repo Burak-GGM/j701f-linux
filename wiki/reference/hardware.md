@@ -43,7 +43,7 @@
 | Hardware video decoding | ⚠️ | The codec works: a 720p H.264 file decodes with about 24 times less CPU time than in software. Loaded at boot; H.264 from 360p to 1080p, HEVC and VP8 decode correctly (bit-exact against software), MPEG-2 works, MPEG-4 does not. `mpv` is configured to use it; the browsers are not |
 | Modem (calls, SMS, data) | ❌ | Not started |
 | Camera | ⚠️ | Both sensors (rear S5K3L2, front S5K5E3) deliver raw frames through a local driver that bypasses Samsung's FIMC-IS; libcamera processes them in software. Plasma Camera shows a preview, takes photographs and switches cameras. Reduced resolution (2072×1552 rear), no autofocus, plain colours, video recording does not work. See [Camera](camera.md) |
-| Flashlight | ✅ | Rear and front flash LEDs as two LED devices in torch mode (rear 25–150 mA in six steps, front 25–50 mA); confirmed by the owner. Plasma's flashlight tile switches the rear one; the "Front flash" app (`j701f-front-flash`) the front one |
+| Flashlight | ✅ | Rear and front flash LEDs as two LED devices in torch mode (rear 25–150 mA in six steps, front 25–50 mA); confirmed by the owner. Plasma's flashlight tile switches the rear one; the "Flashlight" app (`j701f-flashlight`) both |
 | Power domains | ⚠️ | No driver. All four are on at boot and stay on (the module that switched the camera domain off is retired now that the camera is used). Switching the video domain by hand broke the codec until a reboot |
 | Suspend | ⚠️ | Suspend-to-idle works and resumes in half a second (verified with clock-alarm wake-ups up to 60 s). Wakes on the clock alarm only (key wake-up was removed again, it slowed application start); nothing suspends the phone automatically; power saving not measured ([details](kernel.md#suspend)) |
 

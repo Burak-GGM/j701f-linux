@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Flashlight
+Name[tr]=Fener
+Comment=Switch the rear and front flash LEDs on or off
+Comment[tr]=Arka ve ön flaş LED'ini aç ya da kapat
+Exec=/usr/local/bin/j701f-flashlight
+Icon=flashlight-on
+Categories=Utility;
+Keywords=torch;flash;selfie;fener;flaş;
