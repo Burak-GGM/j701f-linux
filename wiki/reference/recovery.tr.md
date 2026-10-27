@@ -96,3 +96,26 @@ Bu yüzden SSH ile giren kişi kurulu sistemin dosyalarını (salt okunur) gör�
 Çekirdek güncellemeleri onun üzerinden yapılır: `tools/run-recovery-update.sh AD` imajı hazırlar, kurtarma ortamına yeniden başlatır, BOOT'u SSH üzerinden ona yazdırıp doğrulatır ve yeniden başlatır. Eski `tools/run-boot-update.sh` RECOVERY'de üretici sistemini gerektiriyordu; artık yeni araca yönlendirip duruyor.
 
 Bölümde daha önce duran üreticinin 3.18 sistemi bütün olarak (38 MiB) telefonda ve bilgisayarda saklanıyor; `tools/restore-vendor-recovery.sh` onu geri yazar. Bu betik henüz çalıştırılmadı.
+
+## Bir sürümü TWRP ya da OrangeFox'tan kurmak
+
+RECOVERY'de bu projenin kurtarma ortamı yerine hâlâ TWRP ya da OrangeFox bulunan bir telefon için `tools/build-recovery-zip.py`, bir sürümü USERDATA'ya yazan, kurtarmadan yüklenebilir bir ZIP üretir. ZIP **yalnızca USERDATA'ya yazar**: BOOT ve RECOVERY en fazla okunur; EFS, modem ve önyükleyici hiç açılmaz. Genel adımlar ve sürümün kendisi kurulum sayfasında anlatılır.
+
+| | |
+| --- | --- |
+| Dosyalar | `recovery/installer/` (`update-binary`, `installer.sh`), `tools/build-recovery-zip.py`, testler `tests/test_recovery_zip.py` içinde |
+| Sürüm | `userdata.ext4.gz`, `userdata.ext4.gz.sha256`, `userdata.ext4.sha256`, `release.json`; ya SD kartta ZIP'in yanındaki `j701f-release/` klasöründe ya da yük 4 GiB'tan küçükse ZIP'in içinde (`--embed`) |
+| Telefondaki araçlar | ZIP, projenin sürümü sabitlenmiş statik AArch64 BusyBox 1.36.1'ini taşır; kurtarmanın kendi araçları kullanılmaz. Burada incelenen iki kurtarmada (OrangeFox R11.1, J7 Nxt için TWRP 3.x) 2017–2021 tarihli bir BusyBox var; TWRP'ninki 32 bittir ve `getevent` içermez |
+
+Bir şey yazılmadan önce aşağıdakilerin hepsi sağlanmıyorsa ZIP kurulumu reddeder:
+
+1. Çekirdek komut satırı bir `J701F` önyükleyicisi bildirir ve kurtarma `j7velte` için derlenmiştir.
+2. `USERDATA` bölümü `mmcblk0p24`'tür ve tam 23314432 sektördür (11936989184 bayt); bu değerler telefonda denetlendi.
+3. BOOT'ta projenin Linux yükleyicisi zaten vardır (U-Boot ortamı `bootcmd=j701f_ramboot` içerir; derlenmiş 86 BOOT imajının hepsinde ve telefonun BOOT bölümünde denetlendi). Bu yoksa Android verisini silmek, hiçbir şeyi başlatamayan bir telefon bırakır.
+4. Ne ZIP ne de sürüm, USERDATA'nın parçası olan iç depolamadadır.
+5. `release.json` bu bölümü tarif eder (sektör, bayt, dosya sistemi UUID'si, `j7velte`); sıkıştırılmış yük SHA-256 değeriyle eşleşir ve eksiksiz bir gzip akışıdır.
+6. USERDATA'nın tamamının (Android uygulamaları, veriler, fotoğraflar) silineceğine dair uyarıdan sonraki 60 saniye içinde **Ses Açma** tuşuna basılır. Ses Kısma ya da hiç tuşa basmamak iptal eder. Tuşlar doğrudan `/dev/input`'tan okunur; bu yüzden TWRP'de de çalışır.
+
+Ardından USERDATA'nın tüm bağlantılarını kaldırır (kurtarmanın MTP'si bölümü tutuyorsa durur ve MTP'nin kapatılmasını ister), imajı yazar, bölümün **tamamını** geri okuyup SHA-256'sını karşılaştırır ve dosya sistemi UUID'sini denetler. Sonuç (`PASS` ya da `FAIL` ve günlük) sürümün yanındaki `install.status` dosyasına yazılır. Yazma yarıda kalırsa USERDATA eksik kalır; BOOT ve RECOVERY'ye dokunulmamıştır ve ZIP yeniden çalıştırılabilir.
+
+Durum 2026-10-27: bilgisayarda, benzetilmiş bir telefona karşı aynı BusyBox ile `qemu-aarch64` altında denendi (12 durum: yükün iki yeri, iptal ve zaman aşımı, başka model, eksik Linux yükleyicisi, yanlış bölüm boyutu, bozuk yük, başka bir sürüm, iç depolamadaki ZIP, geri okuma uyuşmazlığı). **Telefonda henüz çalıştırılmadı**; ilk gerçek kurulum panoda koordine ediliyor.

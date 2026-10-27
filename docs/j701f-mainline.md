@@ -1675,4 +1675,14 @@ Owner: prepare the `btbcm` and `s5p-mfc` patches in kernel form locally (checkpa
 - The kernel's rules for AI-assisted patches (`Documentation/process/coding-assistants.rst`): an AI agent must not add `Signed-off-by`. The patches therefore carry the owner as author but no sign-off; the commit messages state that the fix was found and written with Claude, and a `Notes:` section below `---` (instead of a cover letter, which a single patch does not take) says what was and was not tested.
 - Checks: `W=1` arm64 build of both files without warnings; `checkpatch.pl --strict` with the sign-off added: btbcm clean, s5p-mfc one warning ("Unknown commit id") caused by the shallow clone. Recipients and send commands are in `kernel/upstream/README.md`.
 
+## Release installer ZIP for TWRP and OrangeFox (2026-10-27)
+
+Asked for by Codex (owner: "Codex's decision is my decision"); Codex owns the release builder, the host installer and the installer in the project's own recovery, Claude the flashable ZIP.
+
+- `recovery/installer/update-binary` unpacks `installer.sh` and the project's pinned static AArch64 BusyBox 1.36.1 into `/tmp` and hands over; `tools/build-recovery-zip.py` builds the ZIP, with the release beside it (`j701f-release/`) or inside it (`--embed`, below 4 GiB only: no ZIP64).
+- Why its own BusyBox: the two recoveries looked at are OrangeFox R11.1 (`tools/OrangeFox-R11.1-Beta-j7velte.img.tar`, 64-bit BusyBox 1.22.1, `getevent` from toolbox) and TWRP 3.x for the J7 Nxt (`tools/TWRP RECOVERY For J7 Nxt.tar`, 32-bit BusyBox 1.22.1, no `getevent`). Both mount `/data` from `by-name/USERDATA` with `length=-20480` and bind `/sdcard` onto it; the SD card is `/sdcard1` (OrangeFox) or `/external_sd` (TWRP).
+- Checks, all before writing: `androidboot.bootloader=J701F*`; `ro.product.device=j7velte` when the recovery sets it; `by-name/USERDATA` is `mmcblk0p24` with 23314432 sectors / 11936989184 bytes (re-read on the phone today, UUID `4ce26b55-...` matches); BOOT contains `bootcmd=j701f_ramboot` (present once in each of the 86 built BOOT images and in the phone's BOOT, `mmcblk0p10`), otherwise it refuses because erasing Android's data would leave nothing that starts; ZIP and release not on a mount of USERDATA; `release.json` matches sectors, bytes, UUID and `j7velte`; compressed SHA-256 and `gunzip -t`; Volume Up within 60 s, read from `/dev/input/event*` as 24-byte events.
+- Then: unmount every mount of USERDATA (deepest first; refuses if MTP holds it), `gunzip | dd conv=fsync`, SHA-256 of the whole partition, UUID; `install.status` with PASS/FAIL and the log next to the release.
+- `tests/test_recovery_zip.py`: 12 cases against a simulated phone with the shipped BusyBox under `qemu-aarch64`; all pass. Not run on the phone yet; Codex coordinates the first real installation.
+
 <!-- CLAUDE-END 2026-10-09 -->

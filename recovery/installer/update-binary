@@ -1,0 +1,16 @@
+#!/sbin/sh
+# Written by Claude 2026-10-27. Entry point that TWRP and OrangeFox run for a
+# flashable ZIP: update-binary API OUTFD ZIPFILE. It only unpacks the static
+# AArch64 BusyBox and installer.sh from the ZIP into /tmp and hands over; the
+# work and every check are in installer.sh.
+OUTFD=$2
+ZIP=$3
+W=/tmp/j701f-installer
+ui() { printf 'ui_print %s\nui_print\n' "$*" >&"$OUTFD"; }
+
+rm -rf "$W"
+mkdir -p "$W" || { ui 'ABORTED: cannot create /tmp/j701f-installer'; exit 1; }
+unzip -o "$ZIP" 'j701f/*' -d "$W" >/dev/null 2>&1 || { ui 'ABORTED: cannot unpack the installer'; exit 1; }
+chmod 0755 "$W/j701f/busybox"
+"$W/j701f/busybox" true 2>/dev/null || { ui 'ABORTED: the bundled BusyBox does not run here (not an AArch64 kernel?)'; exit 1; }
+BB=$W/j701f/busybox exec "$W/j701f/busybox" sh "$W/j701f/installer.sh" "$OUTFD" "$ZIP"

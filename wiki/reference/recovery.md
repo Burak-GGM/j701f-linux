@@ -96,3 +96,26 @@ Since 2026-10-10 the RECOVERY slot holds this recovery (image `rec8` since the s
 Kernel updates go through it: `tools/run-recovery-update.sh NAME` stages the image, reboots into the recovery, has it write and verify BOOT over SSH, and reboots. The older `tools/run-boot-update.sh` needed the vendor system in RECOVERY and now stops with a pointer to the new tool.
 
 The vendor 3.18 system that used to be in the slot is kept whole (38 MiB) on the phone and on the computer; `tools/restore-vendor-recovery.sh` writes it back. That script has not been run.
+
+## Installing a release from TWRP or OrangeFox
+
+For a phone that still has TWRP or OrangeFox in RECOVERY instead of this project's recovery, `tools/build-recovery-zip.py` builds a flashable ZIP that writes a release into USERDATA. It writes **USERDATA only**: BOOT and RECOVERY are read at most, and EFS, the modem and the bootloader are never opened. The general steps and the release itself are described on the installation page.
+
+| | |
+| --- | --- |
+| Files | `recovery/installer/` (`update-binary`, `installer.sh`), `tools/build-recovery-zip.py`, tests in `tests/test_recovery_zip.py` |
+| Release | `userdata.ext4.gz`, `userdata.ext4.gz.sha256`, `userdata.ext4.sha256`, `release.json`, either in a folder `j701f-release/` next to the ZIP on the SD card or, if the payload is below 4 GiB, inside the ZIP (`--embed`) |
+| Tools on the phone | The ZIP carries the project's pinned static AArch64 BusyBox 1.36.1; the recovery's own tools are not used. Both recoveries checked here (OrangeFox R11.1, TWRP 3.x for the J7 Nxt) have a 2017–2021 BusyBox, TWRP's is 32-bit and has no `getevent` |
+
+Before anything is written, the ZIP refuses unless all of this holds:
+
+1. The kernel command line names an `J701F` bootloader, and the recovery is built for `j7velte`.
+2. `USERDATA` is `mmcblk0p24`, exactly 23314432 sectors (11936989184 bytes); these values were checked on the phone.
+3. BOOT already holds the project's Linux loader (its U-Boot environment contains `bootcmd=j701f_ramboot`; checked in all 86 built BOOT images and in the phone's BOOT partition). Without it, erasing Android's data would leave a phone that starts nothing.
+4. Neither the ZIP nor the release lies on internal storage, which is part of USERDATA.
+5. `release.json` describes this partition (sectors, bytes, filesystem UUID, `j7velte`), the compressed payload matches its SHA-256 and is a complete gzip stream.
+6. **Volume Up** is pressed within 60 seconds after a warning that all of USERDATA (Android apps, data, photos) will be erased. Volume Down or no key cancels. The keys are read straight from `/dev/input`, so this works in TWRP too.
+
+Then it unmounts every mount of USERDATA (if the recovery's MTP holds it, it stops and asks to switch MTP off), writes the image, reads back the **whole** partition and compares its SHA-256, and checks the filesystem UUID. The result (`PASS` or `FAIL` and the log) is written to `install.status` next to the release. If writing fails half-way, USERDATA is incomplete; BOOT and RECOVERY are untouched and the ZIP can be run again.
+
+State 2026-10-27: tested on the computer against a simulated phone (12 cases: both payload places, cancel and timeout, another model, missing Linux loader, wrong partition size, damaged payload, foreign release, ZIP on internal storage, read-back mismatch), with the same BusyBox under `qemu-aarch64`. **Not yet run on the phone**; the first real installation is coordinated on the board.
