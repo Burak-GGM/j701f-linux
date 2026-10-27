@@ -24,6 +24,9 @@
 
 Yonga setinin ihtiyaç duyduğu geri kalan her şey — saat denetleyicileri, pin denetimi, S2MPU05 PMIC, USB, I²C, temel aygıt ağacı `exynos7870.dtsi` — 7.1'de zaten üst akımda.
 
+!!! note "7.1 artık bakımı yapılan bir seri değil (2026-10-27'de denetlendi)"
+    kernel.org artık 7.1 serisini listelemiyor; güncel kararlı çekirdek 7.2.13. Bilgisayarda yapılan bir denemede (`build/kernel-7.2-trial/`) 31 yamanın hepsi, sağlaması doğrulanmış 7.2.13'e derlemenin kullandığı sırayla uygulandı: hiçbiri başarısız olmadı, 05 ve 06 (`dw_mmc` DMA eşiği) 7.2.13'te zaten var ve yığından çıkarılabilir, altı yerel yama küçük kaymalarla uygulanıyor. Bundan henüz telefonda derlenmiş ya da çalıştırılmış bir şey yok.
+
 ## Yerel yamalar (`kernel/patches/linux-*.patch`)
 
 Bunlar yalnızca bu projede var. Hiçbiri üst akıma gönderilmedi. İkisi, `btbcm` adresi ve video çözücünün ilk karesi, güncel mainline'a göre yeniden yazılıp `kernel/upstream/` altında gönderime hazırlandı (`checkpatch.pl` ile denetlendi, alıcılar `get_maintainer.pl` ile bulundu); göndermek, kendi `Signed-off-by` satırıyla sahibin adımıdır.

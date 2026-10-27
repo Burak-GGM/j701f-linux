@@ -1723,4 +1723,13 @@ The phone was unreachable (USB gone since 07:36, no Wi-Fi on the fresh system), 
 - Peak memory (VmHWM under qemu, 60 frames): 195 MB at 320x240, 485 MB at 960x540, 622 MB at 1280x720, 1.07 GB at 2072x1552, the rear camera's frame size and what the default "Auto" resolution records at; 4:2:0 frames do not lower it (x264 threads and lookahead dominate). With about 1.2 GB free on the phone before the camera's own buffers, swapping and an earlyoom kill of the camera application are the likely end: an empty or truncated file. Not yet confirmed on the phone; the test to do is on the camera wiki page.
 - Camera-size frames recorded at the 540p preset: peak 403 MB instead of 1.07 GB, but 960x540 with square pixels, so the 4:3 picture is squeezed; not made the default.
 
+## Roadmap 4.5: Linux 7.1 has reached end of life; the patch stack on 7.2.13 (2026-10-27)
+
+kernel.org's `releases.json` lists mainline 7.3, stable 7.2.13 and the longterm series; 7.1 is gone, so `7.1.13` gets no more fixes. Trial on the computer only: `linux-7.2.13.tar.xz` from `cdn.kernel.org`, SHA-256 `08e7b0c4...` checked against `sha256sums.asc` (signature not verified, as for 7.1.13), unpacked in `build/kernel-7.2-trial/`, then the 31 patches in the build's order (`exynos7870-7.1/*.patch`, then `linux-*.patch`), each dry-run first; results in `build/kernel-7.2-trial/result.txt`:
+
+- Community: 01-04 apply cleanly; **05 and 06 (`dw_mmc` DMA threshold option and the Exynos value) are already in 7.2.13** (they reverse-apply) and can leave the stack.
+- Local: all 25 apply. With offsets or fuzz: `audio-exynos7870-lpass`, `dsim-j701f-timing-trial`, `dsim-pll-wait-fix`, `g3d-exynos7870-scaling`, `mip4-vdd-supply`, `zz-simpledrm-j701f-software-backlight`; the rest cleanly.
+- Fuzzed hunks read back in the patched 7.2.13 tree: `dsim-pll-wait-fix` lands where it should (the PLL wait in `samsung_dsim_set_pll` reads `if (!ready)` together with the diagnostics patch; the IRQ handler services `PLL_STABLE` after the reset branch, about 35 lines further down than in 7.1); `g3d-exynos7870-scaling` adds `clk-exynos7870-g3d-park.o` once, next to `clk-exynos7870.o` (7.2 added `clk-artpec9` and `clk-acpm` to that Makefile); `mip4-vdd-supply` enables the supply and waits 300 ms in `mip4_probe` before `mip4_power_on`, as on 7.1; `audio-exynos7870-lpass` puts `exynos7870-lpass.o` (and the codec card's objects after it) right after `snd-soc-i2s.o`.
+- Not done yet: building it (the classifier of this session kept failing on the build command; the script is ready), the out-of-tree modules against it, and any phone test. A move to 7.2 also means new `kernel/inputs.json` pins and a new resolved-config hash.
+
 <!-- CLAUDE-END 2026-10-09 -->

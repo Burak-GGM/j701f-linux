@@ -24,6 +24,9 @@ Six patches from the [exynos7870-mainline](https://gitlab.com/exynos7870-mainlin
 
 Everything else the SoC needs — clock controllers, pin control, the S2MPU05 PMIC, USB, I²C, the base device tree `exynos7870.dtsi` — is already upstream in 7.1.
 
+!!! note "7.1 is no longer maintained (checked 2026-10-27)"
+    kernel.org lists no 7.1 series any more; the current stable kernel is 7.2.13. A trial on the computer (`build/kernel-7.2-trial/`) applied all 31 patches to a checksum-verified 7.2.13 in the order the build uses: none fails, 05 and 06 (the `dw_mmc` DMA threshold) are already in 7.2.13 and can be dropped, six local patches need small offsets. Nothing was built or run on the phone from it yet.
+
 ## Local patches (`kernel/patches/linux-*.patch`)
 
 These exist only in this project. None has been sent upstream. Two of them, the `btbcm` address and the video decoder's first frame, have been rewritten against current mainline and prepared for sending in `kernel/upstream/` (checked with `checkpatch.pl`, recipients from `get_maintainer.pl`); sending them is the owner's step, with his own `Signed-off-by`.
