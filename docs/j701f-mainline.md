@@ -1721,5 +1721,6 @@ The phone was unreachable (USB gone since 07:36, no Wi-Fi on the fresh system), 
 - The path works on the computer, with the host's PulseAudio microphone as well: valid MP4 with H.264 and MP3.
 - From RGB frames Qt picks YUV 4:4:4: H.264 High 4:4:4 Predictive, unplayable on hardware decoders. YUV 4:2:0 frames give High profile and let 56 of 60 frames through at camera size instead of 18.
 - Peak memory (VmHWM under qemu, 60 frames): 195 MB at 320x240, 485 MB at 960x540, 622 MB at 1280x720, 1.07 GB at 2072x1552, the rear camera's frame size and what the default "Auto" resolution records at; 4:2:0 frames do not lower it (x264 threads and lookahead dominate). With about 1.2 GB free on the phone before the camera's own buffers, swapping and an earlyoom kill of the camera application are the likely end: an empty or truncated file. Not yet confirmed on the phone; the test to do is on the camera wiki page.
+- Camera-size frames recorded at the 540p preset: peak 403 MB instead of 1.07 GB, but 960x540 with square pixels, so the 4:3 picture is squeezed; not made the default.
 
 <!-- CLAUDE-END 2026-10-09 -->

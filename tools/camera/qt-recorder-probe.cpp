@@ -53,7 +53,12 @@ int main(int argc, char **argv)
     fmt.setVideoCodec(QMediaFormat::VideoCodec::H264);
     recorder.setMediaFormat(fmt);
     recorder.setQuality(QMediaRecorder::NormalQuality);
-    recorder.setVideoResolution(QSize());
+    // PROBE_TARGET=1 with PROBE_TARGET_W/H records at that size, like Plasma
+    // Camera's resolution presets; otherwise at the frames' own size ("Auto").
+    if (qEnvironmentVariableIsSet("PROBE_TARGET"))
+        recorder.setVideoResolution(QSize(qEnvironmentVariableIntValue("PROBE_TARGET_W"), qEnvironmentVariableIntValue("PROBE_TARGET_H")));
+    else
+        recorder.setVideoResolution(QSize());
     recorder.setVideoFrameRate(0);
     recorder.setOutputLocation(QUrl::fromLocalFile(out));
 
