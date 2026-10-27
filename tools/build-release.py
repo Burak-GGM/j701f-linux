@@ -112,6 +112,7 @@ def validate_root(root):
            "test -f /target/etc/umtprd/umtprd.conf; "
            "grep -qx 'Autolock=false' "
            "/target/home/burak-alpine/.config/kscreenlockerrc; "
+           "grep -qx 'AllowSuspend=no' /target/etc/elogind/sleep.conf.d/10-j701f-nosleep.conf; "
            "grep -qx 'RequirePassword=false' "
            "/target/home/burak-alpine/.config/kscreenlockerrc")
     if (root / 'home/burak-alpine/.ssh/authorized_keys').exists():
@@ -274,11 +275,15 @@ def enable_native_display_for_matching_modules(root):
 
 def migrate_unconfigured_account(root):
     """Bring a reused, never-installed build root to the passwordless first-boot contract."""
-    docker('-v', f'{root}:/target', CONTAINER, 'sh', '-ec',
+    docker('-v', f'{root}:/target', '-v', f'{REPO}:/src:ro', CONTAINER, 'sh', '-ec',
            "sed -i 's/^burak-alpine:!:/burak-alpine::/' /target/etc/shadow; "
            # A 0 last-change field forces a password change and breaks autologin.
            "sed -i 's/^burak-alpine:\\([^:]*\\):0:/burak-alpine:\\1::/' /target/etc/shadow; "
-           'chgrp shadow /target/etc/shadow; chmod 640 /target/etc/shadow')
+           'chgrp shadow /target/etc/shadow; chmod 640 /target/etc/shadow; '
+           # Reused roots: move the no-sleep file to where elogind reads [Sleep].
+           'rm -f /target/etc/elogind/logind.conf.d/j701f-nosleep.conf; '
+           'install -D -m 644 /src/system/elogind-nosleep.conf '
+           '/target/etc/elogind/sleep.conf.d/10-j701f-nosleep.conf')
 
 
 def compile_schema_cache(root):

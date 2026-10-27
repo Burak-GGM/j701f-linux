@@ -131,7 +131,10 @@ for item in \
 done
 copy system/inputboost usr/local/sbin/j701f-inputboost
 copy system/earlyoom.conf etc/default/earlyoom 644
-copy system/elogind-nosleep.conf etc/elogind/logind.conf.d/j701f-nosleep.conf 644
+# [Sleep] settings are read from sleep.conf.d only; in logind.conf.d they are
+# ignored and PowerDevil suspended the phone after 15 idle minutes, with no key
+# to wake it (first hardware run, 2026-10-27).
+copy system/elogind-nosleep.conf etc/elogind/sleep.conf.d/10-j701f-nosleep.conf 644
 copy system/elogind-powerkey.conf etc/elogind/logind.conf.d/j701f-powerkey.conf 644
 copy system/accel-udev.rules etc/udev/rules.d/83-j701f-accel.rules 644
 copy system/touchkey.hwdb etc/udev/hwdb.d/83-j701f-touchkey.hwdb 644

@@ -30,7 +30,7 @@ Kaynakları depoda `system/` içindedir.
 | `~/j701f-mfc-modules/load.sh` | `mfc-load` | Video çözücü modüllerini sırayla yükler |
 | `/etc/local.d/j701f-stamps.stop` | `stamps-stop` | Düzenli kapanışta damga dosyalarını temizler |
 | `~/j701f-audio-modules/load.sh` | `audio-load` | Altı ses modülünü sırayla yükler |
-| `/etc/elogind/logind.conf.d/…` | `elogind-powerkey.conf`, `elogind-nosleep.conf` | Güç tuşu Plasma'ya bırakılır; uyku kapalıdır |
+| `/etc/elogind/logind.conf.d/…`, `/etc/elogind/sleep.conf.d/10-j701f-nosleep.conf` | `elogind-powerkey.conf`, `elogind-nosleep.conf` | Güç tuşu Plasma'ya bırakılır; uyku kapalıdır. Uykuyu kapatan dosya yalnızca `sleep.conf.d` içinde etkilidir: `logind.conf.d` içinde yok sayılır ve telefon 15 dakika boşta kalınca, onu uyandıracak bir tuş olmadan askıya girer |
 | `/etc/sddm.conf.d/…` | `sddm-autologin.conf` | `plasma-mobile` oturumuna otomatik giriş |
 | `/etc/profile.d/…` | `session-profile.sh` | Oturum ortamı |
 | `~/j701f-boot-swap/` | — | `reboot-recovery` ve özgün `BOOT` imajının yedeği |

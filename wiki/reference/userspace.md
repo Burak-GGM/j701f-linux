@@ -30,7 +30,7 @@ The sources are in `system/` in the repository.
 | `~/j701f-mfc-modules/load.sh` | `mfc-load` | Loads the video codec modules in order |
 | `/etc/local.d/j701f-stamps.stop` | `stamps-stop` | Clears the stamp files on an orderly shutdown |
 | `~/j701f-audio-modules/load.sh` | `audio-load` | Loads the six audio modules in order |
-| `/etc/elogind/logind.conf.d/…` | `elogind-powerkey.conf`, `elogind-nosleep.conf` | Power key is left to Plasma; suspend is disabled |
+| `/etc/elogind/logind.conf.d/…`, `/etc/elogind/sleep.conf.d/10-j701f-nosleep.conf` | `elogind-powerkey.conf`, `elogind-nosleep.conf` | Power key is left to Plasma; suspend is disabled. The no-sleep file only works in `sleep.conf.d`: in `logind.conf.d` it is ignored and the phone suspends after 15 idle minutes with no key to wake it |
 | `/etc/sddm.conf.d/…` | `sddm-autologin.conf` | Automatic login into the `plasma-mobile` session |
 | `/etc/profile.d/…` | `session-profile.sh` | Session environment |
 | `~/j701f-boot-swap/` | — | `reboot-recovery` and the backup of the original `BOOT` image |
