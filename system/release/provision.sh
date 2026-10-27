@@ -72,6 +72,15 @@ add_user dnsmasq 105 110 /dev/null /sbin/nologin
 for group in video input audio seat plugdev; do add_member "$group" burak-alpine; done
 add_member video sddm
 chmod 644 "$root/etc/group" "$root/etc/passwd"
+# apk --no-scripts extracted these before their groups existed and left them
+# root-owned: D-Bus could then not start wpa_supplicant and polkitd could not
+# read its rules (first hardware run, 2026-10-27).
+# Group numbers come from the target's own group file, not the build container's.
+target_gid() { awk -F: -v n="$1" '$1==n {print $3}' "$root/etc/group"; }
+chgrp "$(target_gid messagebus)" "$root/usr/libexec/dbus-daemon-launch-helper"
+chmod 4750 "$root/usr/libexec/dbus-daemon-launch-helper"
+chgrp "$(target_gid polkitd)" "$root/etc/polkit-1/rules.d"
+chmod 750 "$root/etc/polkit-1/rules.d"
 chgrp shadow "$root/etc/shadow"
 chmod 640 "$root/etc/shadow"
 

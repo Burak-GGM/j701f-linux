@@ -1739,4 +1739,11 @@ Both times the new system had been up 15-17 minutes, USB went away and did not c
 - Done on the phone at 168 s uptime over USB: the file moved to `sleep.conf.d`, logind's `CanSuspend` now answers `"no"`.
 - Owner, the same morning: "the phone has switched itself off twice, USB contact or something you do, I don't know; you need not stop, I am at home and give you full authority — record this". Recorded. Plasma Mobile's first-start "Welcome" wizard appears on the fresh system; the owner goes through it on the phone (it also sets up Wi-Fi).
 
+## The fresh release had no working Wi-Fi: root-owned D-Bus helper (2026-10-27)
+
+While the owner went through Plasma Mobile's Welcome wizard, NetworkManager showed `wlan0` as "unavailable" and no `wpa_supplicant` ran; starting it through D-Bus gave `Spawn.ExecFailed ... Permission denied`. `/usr/libexec/dbus-daemon-launch-helper` was `4750 root:root`: with `apk --no-scripts` the `messagebus` group did not exist when the file was extracted, apk fell back to group root (its database even records `a:0:0:4750`), and the system bus, running as `messagebus`, could not execute it. Same cause: `/etc/polkit-1/rules.d` was `750 root:root`, unreadable for `polkitd`, so the project's `49-j701f.rules` and the default rules were ignored.
+
+- On the phone over USB: both re-grouped (`messagebus`, `polkitd`), NetworkManager restarted: `wlan0` "disconnected", 12 networks in the scan; polkit restarted.
+- In the builder: `provision.sh` and `refresh_release_scripts` set both, using the group numbers from the target's own `/etc/group` (the build container's names may differ); `validate_root` checks mode and group. Rebuilt from the reused root: PASS, helper `4750 0:101`, rules `750 0:107`, no-sleep file in `sleep.conf.d`.
+
 <!-- CLAUDE-END 2026-10-09 -->

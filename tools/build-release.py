@@ -113,6 +113,9 @@ def validate_root(root):
            "grep -qx 'Autolock=false' "
            "/target/home/burak-alpine/.config/kscreenlockerrc; "
            "grep -qx 'AllowSuspend=no' /target/etc/elogind/sleep.conf.d/10-j701f-nosleep.conf; "
+           "g() { awk -F: -v n=\"$1\" '$1==n {print $3}' /target/etc/group; }; "
+           "[ \"$(stat -c %a:%g /target/usr/libexec/dbus-daemon-launch-helper)\" = \"4750:$(g messagebus)\" ]; "
+           "[ \"$(stat -c %a:%g /target/etc/polkit-1/rules.d)\" = \"750:$(g polkitd)\" ]; "
            "grep -qx 'RequirePassword=false' "
            "/target/home/burak-alpine/.config/kscreenlockerrc")
     if (root / 'home/burak-alpine/.ssh/authorized_keys').exists():
@@ -242,7 +245,15 @@ def refresh_release_scripts(root):
            'ln -sfn /etc/init.d/localmount '
            '/target/etc/runlevels/boot/localmount; '
            'chown 1000:1000 /target/home/burak-alpine/.config/kscreenlockerrc; '
-           'chgrp shadow /target/etc/shadow; chmod 640 /target/etc/shadow')
+           'chgrp shadow /target/etc/shadow; chmod 640 /target/etc/shadow; '
+           # apk --no-scripts extracts these before their groups exist and falls
+           # back to root: D-Bus could not start wpa_supplicant (no Wi-Fi) and
+           # polkitd could not read its rules (first hardware run, 2026-10-27).
+           # Group numbers from the target's group file, not the container's.
+           'g() { awk -F: -v n="$1" \'$1==n {print $3}\' /target/etc/group; }; '
+           'chgrp "$(g messagebus)" /target/usr/libexec/dbus-daemon-launch-helper; '
+           'chmod 4750 /target/usr/libexec/dbus-daemon-launch-helper; '
+           'chgrp "$(g polkitd)" /target/etc/polkit-1/rules.d; chmod 750 /target/etc/polkit-1/rules.d')
 
 
 def copy_local_umtprd(root, source):
