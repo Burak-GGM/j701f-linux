@@ -101,6 +101,17 @@ The battery percentage had been listed as "working" since the fuel gauge driver 
 
 `tools/build-kernel.py` applies each local patch once and records that. When a patch was edited later, the tool tried to apply the new version on top of the old one, failed, and the habit grew of copying the changed file into the work tree by hand - which works until the tree is rebuilt from scratch and the hand-carried state is gone. The tool now keeps a copy of what it applied and takes the old version out first. If a tool makes the correct way harder than the shortcut, the tool is what needs fixing.
 
+## An installer meets the hardware (2026-10-27)
+
+The release installer passed every host test and still stopped four times on its first run on the phone. Each fault lived in something the tests had copied from a guess instead of from the device:
+
+- **Which USB serial number the shell has.** The host looked for the stage-1 console's name; the mainline initramfs and the recovery call their gadget `j701f-diagnostic`. The recovery had received the first command, the host just never recognised the port.
+- **A command that cuts its own line.** Stopping MTP unbinds the USB gadget; run from the USB serial shell, it hangs up that shell and dies before binding the gadget again, leaving the phone without USB. Anything that touches the gadget runs detached, and the caller waits for USB to come back.
+- **A field that means "now".** `0` as the shadow "last password change" day tells PAM the password must be changed immediately; SDDM's autologin fails and the phone stops at a login screen. Leave the field empty.
+- **Prompts in the output.** The serial shell's prompt can stick to the first line of output; parse by searching for the expected pattern, not by splitting lines.
+
+The SD backup and the full read-back worked first time: the parts that were checked against the real phone beforehand (partition sizes, hashes, the BOOT marker) held.
+
 ## Small traps met again
 
 - A command that kills processes by pattern (`pkill -f`) also matches the shell that carries the command, if the pattern appears in it: the session ends silently before anything else runs. Send such things as a script file.

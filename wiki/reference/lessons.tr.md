@@ -101,6 +101,17 @@ Pil yüzdesi, pil ölçer sürücüsü ilk yüklendiğinden beri "çalışıyor"
 
 `tools/build-kernel.py` her yerel yamayı bir kez uygular ve bunu kaydeder. Bir yama sonradan düzenlendiğinde araç yeni sürümü eskisinin üstüne uygulamaya çalışıyor, başarısız oluyordu; bunun üzerine değişen dosyayı çalışma ağacına elle kopyalama alışkanlığı oluştu - ağaç sıfırdan kurulana ve elle taşınan durum yok olana dek işe yarayan bir alışkanlık. Araç artık uyguladığının bir kopyasını saklıyor ve önce eski sürümü geri alıyor. Bir araç doğru yolu kestirmeden daha zor kılıyorsa, düzeltilmesi gereken araçtır.
 
+## Bir kurulum aracı donanımla karşılaşıyor (2026-10-27)
+
+Sürüm kurulum aracı bilgisayardaki bütün testlerden geçti, yine de telefondaki ilk çalıştırmasında dört kez durdu. Her hata, testlerin cihazdan değil bir tahminden kopyaladığı bir şeyde saklıydı:
+
+- **Kabuğun USB seri numarası.** Bilgisayar birinci aşamanın konsol adını arıyordu; mainline initramfs ve kurtarma ortamı gadget'larına `j701f-diagnostic` diyor. İlk komut kurtarmaya ulaşmıştı, bilgisayar portu tanımadı yalnızca.
+- **Kendi hattını kesen komut.** MTP'yi durdurmak USB gadget'ını ayırır; USB seri kabuktan çalıştırılınca o kabuğu kapatır ve gadget'ı yeniden bağlamadan ölür, telefon USB'siz kalır. Gadget'a dokunan her şey ayrı bir oturumda çalışır, çağıran USB'nin dönmesini bekler.
+- **"Şimdi" anlamına gelen bir alan.** Shadow dosyasındaki "son parola değişikliği" gününe `0` yazmak PAM'e parolanın hemen değişmesi gerektiğini söyler; SDDM'nin otomatik girişi başarısız olur ve telefon giriş ekranında kalır. Alan boş bırakılmalı.
+- **Çıktıdaki istemler.** Seri kabuğun istemi çıktının ilk satırına yapışabilir; satırları bölerek değil, beklenen kalıbı arayarak ayrıştırın.
+
+SD yedeği ve tam geri okuma ilk seferde çalıştı: önceden gerçek telefona karşı denetlenmiş parçalar (bölüm boyutları, sağlamalar, BOOT işareti) tuttu.
+
 ## Yeniden karşılaşılan küçük tuzaklar
 
 - Süreçleri kalıba göre öldüren bir komut (`pkill -f`), kalıp kendi içinde geçiyorsa komutu taşıyan kabuğu da yakalar: oturum, başka hiçbir şey çalışmadan sessizce biter. Böyle şeyleri betik dosyası olarak gönderin.
