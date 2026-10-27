@@ -152,6 +152,8 @@ copy system/flashlight-udev.rules etc/udev/rules.d/83-j701f-flashlight.rules 644
 copy system/camera/83-j701f-camera.rules etc/udev/rules.d/83-j701f-camera.rules 644
 copy system/session/gtk-env.sh home/burak-alpine/.config/plasma-workspace/env/j701f-gtk.sh 644
 copy system/session/webengine-env.sh home/burak-alpine/.config/plasma-workspace/env/j701f-webengine.sh 644
+# libcamera on the CPU: the GPU path crashed Plasma Camera (switching cameras).
+copy system/camera/camera-env.sh home/burak-alpine/.config/plasma-workspace/env/j701f-camera.sh 644
 copy system/session/freezer/freezer.js home/burak-alpine/.local/lib/j701f-freezer/freezer.js 644
 copy system/session/freezer/j701f-freezer.py home/burak-alpine/.local/lib/j701f-freezer/j701f-freezer.py
 copy system/session/freezer/j701f-freezer.conf home/burak-alpine/.config/j701f-freezer.conf 644

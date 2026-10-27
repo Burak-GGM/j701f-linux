@@ -118,6 +118,8 @@ def validate_root(root):
            "[ \"$(stat -c %a:%g /target/etc/polkit-1/rules.d)\" = \"750:$(g polkitd)\" ]; "
            "grep -qx 'RequirePassword=false' "
            "/target/home/burak-alpine/.config/kscreenlockerrc; "
+           "grep -qx 'export LIBCAMERA_SOFTISP_MODE=cpu' "
+           "/target/home/burak-alpine/.config/plasma-workspace/env/j701f-camera.sh; "
            "grep -qF 'Mobile Task Switcher=Meta+C\\tLaunch (1),' "
            "/target/home/burak-alpine/.config/kglobalshortcutsrc")
     if (root / 'home/burak-alpine/.ssh/authorized_keys').exists():
@@ -234,6 +236,9 @@ def refresh_release_scripts(root):
            '/target/etc/init.d/j701f-release-setup; '
            'install -m 644 /src/system/release/kscreenlockerrc '
            '/target/home/burak-alpine/.config/kscreenlockerrc; '
+           'install -D -m 644 /src/system/camera/camera-env.sh '
+           '/target/home/burak-alpine/.config/plasma-workspace/env/j701f-camera.sh; '
+           'chown -R 1000:1000 /target/home/burak-alpine/.config/plasma-workspace; '
            'install -m 644 /src/system/release/kglobalshortcutsrc '
            '/target/home/burak-alpine/.config/kglobalshortcutsrc; '
            'install -m 755 /src/system/flashlight/j701f-front-flash '

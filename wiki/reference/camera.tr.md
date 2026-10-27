@@ -30,7 +30,7 @@ Samsung'un kamera yazılımından hiçbir şey kullanılmıyor - ne sürücüsü
 - **Ön kameranın alıcısı**, sensör yayın yaptığı halde hiçbir şey görmüyordu: üreticinin PHY sürücüsü bir sistem yazmacında ana hat PHY sürücüsünün bilmediği bir bit daha kuruyor.
 - **libcamera genel işlem hattında yalnızca bildiği platform sürücülerini kabul ediyor.** Bu yüzden medya aygıtı sürücü adını `qcom-camss` olarak veriyor; listede yazılımsal işlemesi açık olan bir giriş. Bunun dışında Qualcomm'la ilgisi yok; temiz seçenek, o listede bir satırı daha olan bir libcamera.
 - **Bir dma-buf sağlayıcısı.** libcamera'nın yazılımsal işlemesi buna ihtiyaç duyuyor ve BOOT'taki çekirdekte yok; çekirdeğin `udmabuf` sürücüsü ayrı bir modül olarak derlendi, çekirdeğin dışa aktarmadığı bir işleve ihtiyaç duyan tek denetimi çıkarılarak.
-- **GPU mu işlemci mi.** GPU yolunda libcamera'nın deneme programı bu telefonda yaklaşık her üç başlatmadan birinde durdu; oturum `LIBCAMERA_SOFTISP_MODE=cpu` ayarlıyor.
+- **GPU mu işlemci mi.** GPU yolunda libcamera'nın deneme programı bu telefonda yaklaşık her üç başlatmadan birinde durdu; oturum `LIBCAMERA_SOFTISP_MODE=cpu` ayarlıyor (`~/.config/plasma-workspace/env/j701f-camera.sh`; sürüm bunu 2026-10-27'den beri kuruyor. İlk sürümde eksikti: Plasma Camera kamera değiştirirken çöküyor ve takılıyordu).
 
 ## Yolda yapılan hatalar
 

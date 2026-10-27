@@ -30,7 +30,7 @@ Nothing of Samsung's camera software is used - not its driver, not its closed im
 - **The front camera's receiver** saw nothing although the sensor was streaming: the vendor PHY driver sets one more bit in a system register that the mainline PHY driver does not know.
 - **libcamera only accepts known platform drivers** in its generic pipeline. The media device therefore gives its driver name as `qcom-camss`, a listed entry with software processing. Nothing else about it is Qualcomm's; the clean alternative is a libcamera with one more line in that list.
 - **A dma-buf provider.** libcamera's software processing needs one and the kernel in BOOT has none; the kernel's `udmabuf` driver was built separately as a module, with one check removed that needs a function the kernel does not export.
-- **GPU or CPU.** On the GPU path libcamera's test program aborted in about one start in three on this phone; the session sets `LIBCAMERA_SOFTISP_MODE=cpu`.
+- **GPU or CPU.** On the GPU path libcamera's test program aborted in about one start in three on this phone; the session sets `LIBCAMERA_SOFTISP_MODE=cpu` (`~/.config/plasma-workspace/env/j701f-camera.sh`, installed by the release since 2026-10-27; the first release lacked it and Plasma Camera crashed when switching cameras and lagged).
 
 ## Mistakes made on the way
 
