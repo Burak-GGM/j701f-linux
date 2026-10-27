@@ -32,7 +32,9 @@ add_user() {
     name=$1; uid=$2; gid=$3; home=$4; shell=$5; password=${6-!}
     grep -q "^$name:" "$root/etc/passwd" && return
     printf '%s:x:%s:%s::%s:%s\n' "$name" "$uid" "$gid" "$home" "$shell" >> "$root/etc/passwd"
-    printf '%s:%s:0:0:99999:7:::\n' "$name" "$password" >> "$root/etc/shadow"
+    # Empty last-change field: no password ageing. A 0 there means "change the
+    # password now"; with it SDDM's autologin failed on the first hardware run.
+    printf '%s:%s::0:99999:7:::\n' "$name" "$password" >> "$root/etc/shadow"
 }
 add_member() {
     name=$1; member=$2

@@ -103,6 +103,7 @@ def validate_root(root):
         raise ValueError('Missing expected unprivileged local account')
     docker('-v', f'{root}:/target:ro', CONTAINER, 'sh', '-ec',
            "grep -q '^burak-alpine::' /target/etc/shadow; "
+           "! grep -q '^burak-alpine:[^:]*:0:' /target/etc/shadow; "
            "grep -q '^PasswordAuthentication no$' "
            "/target/etc/ssh/sshd_config.d/00-j701f.conf; "
            "[ \"$(stat -c %a /target/etc/shadow)\" = 640 ]; "
@@ -275,6 +276,8 @@ def migrate_unconfigured_account(root):
     """Bring a reused, never-installed build root to the passwordless first-boot contract."""
     docker('-v', f'{root}:/target', CONTAINER, 'sh', '-ec',
            "sed -i 's/^burak-alpine:!:/burak-alpine::/' /target/etc/shadow; "
+           # A 0 last-change field forces a password change and breaks autologin.
+           "sed -i 's/^burak-alpine:\\([^:]*\\):0:/burak-alpine:\\1::/' /target/etc/shadow; "
            'chgrp shadow /target/etc/shadow; chmod 640 /target/etc/shadow')
 
 
