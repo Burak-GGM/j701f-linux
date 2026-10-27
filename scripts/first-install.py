@@ -81,9 +81,12 @@ def check_bundle(bundle):
         require(info['archive_sha256'] == manifest[role]['archive_sha256'],
                 f'{archive.name} differs from its manifest entry')
         result[role] = info
-    require((bundle / 'boot.img').is_file() and
-            sha256_file(bundle / 'boot.img') == manifest['boot']['image_sha256'],
-            'boot.img differs from its manifest entry')
+    # Route A stages boot.img, not the tar: it must be the image inside the
+    # archive that was just verified, not merely agree with the manifest.
+    boot_sha = sha256_file(bundle / 'boot.img') if (bundle / 'boot.img').is_file() else None
+    require(boot_sha == result['boot']['image_sha256'],
+            'boot.img is not the image inside the verified BOOT archive')
+    require(boot_sha == manifest['boot']['image_sha256'], 'boot.img differs from its manifest entry')
     return manifest, result
 
 
@@ -93,14 +96,19 @@ def check_release(release):
         require((release / name).is_file(), f'{release / name} missing: run tools/build-release.py')
     payload = release / 'userdata.ext4.gz'
     require(payload.stat().st_size <= FAT32_MAX, 'userdata.ext4.gz is too large for a FAT32 card')
-    require(sha256_file(payload) == first_hash(release / 'userdata.ext4.gz.sha256'),
+    payload_sha = sha256_file(payload)
+    require(payload_sha == first_hash(release / 'userdata.ext4.gz.sha256'),
             'userdata.ext4.gz does not match userdata.ext4.gz.sha256')
     info = json.loads((release / 'release.json').read_text())
+    require(info.get('partition') == 'USERDATA', 'release.json is not for the USERDATA partition')
     require(info.get('sectors') == SECTORS and info.get('bytes') == BYTES, 'release.json is not for this USERDATA')
     require(info.get('filesystem_uuid') == UUID, 'release.json names another filesystem UUID')
     require('j7velte' in str(info.get('device', '')), 'release.json is not for the j7velte')
-    raw = info.get('raw_image', {}).get('sha256')
-    require(raw is None or raw == first_hash(release / 'userdata.ext4.sha256'),
+    # Both hashes in release.json are required and must agree with the files
+    # (Codex's review, 2026-10-27).
+    require(info.get('sd_payload', {}).get('sha256') == payload_sha,
+            'release.json and userdata.ext4.gz disagree')
+    require(info.get('raw_image', {}).get('sha256') == first_hash(release / 'userdata.ext4.sha256'),
             'release.json and userdata.ext4.sha256 disagree')
     return info
 

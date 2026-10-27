@@ -295,6 +295,25 @@ class SyntheticFirstInstallTests(unittest.TestCase):
         self.assertTrue((out_dir / 'recovery.img').is_dir())
         self.assertEqual(list(out_dir.glob('.first-install-staging-*')), [])
 
+    def test_staged_boot_image_must_be_the_one_inside_the_verified_archive(self):
+        # Codex's review of 2026-10-27: boot.img and the manifest changed together
+        # used to pass, although Route A stages boot.img and not the archive.
+        boot_img = self.work / 'src-boot.img'
+        rec_img = self.work / 'src-recovery.img'
+        out_dir = self.work / 'out'
+        boot_img.write_bytes(build_synthetic_mainline_image(is_recovery=False, dtbh=self.stub_dtbh))
+        rec_img.write_bytes(build_synthetic_mainline_image(is_recovery=True, dtbh=self.stub_dtbh))
+        first_install.prepare_bundle(boot_img, rec_img, out_dir)
+        with mock.patch.object(first_install_script, 'prepare_tool', return_value=first_install):
+            first_install_script.check_bundle(out_dir)
+            other = b'not the archived image'
+            (out_dir / 'boot.img').write_bytes(other)
+            manifest = json.loads((out_dir / 'manifest.json').read_text())
+            manifest['boot']['image_sha256'] = hashlib.sha256(other).hexdigest()
+            (out_dir / 'manifest.json').write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, 'not the image inside the verified BOOT archive'):
+                first_install_script.check_bundle(out_dir)
+
     def test_default_paths_enforce_pinned_cam5_and_rec8_hashes(self):
         default_boot = self.work / 'default-boot.img'
         default_rec = self.work / 'default-rec.img'
@@ -434,17 +453,33 @@ class FirstInstallScriptTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.work = Path(self.tmp.name)
 
-    def release(self, uuid=first_install_script.UUID, gz=b'payload', gz_hash=None):
+    def release(self, uuid=first_install_script.UUID, gz=b'payload', gz_hash=None, **json_changes):
         rel = self.work / 'release'
         rel.mkdir(exist_ok=True)
         (rel / 'userdata.ext4.gz').write_bytes(gz)
         (rel / 'userdata.ext4.gz.sha256').write_text((gz_hash or hashlib.sha256(gz).hexdigest()) + '  userdata.ext4.gz\n')
         (rel / 'userdata.ext4.sha256').write_text('a' * 64 + '  userdata.ext4\n')
-        (rel / 'release.json').write_text(json.dumps({
-            'device': 'SM-J701F / samsung,j7velte', 'sectors': first_install_script.SECTORS,
-            'bytes': first_install_script.BYTES, 'filesystem_uuid': uuid,
-            'raw_image': {'sha256': 'a' * 64}, 'root_version': 'TEST'}))
+        meta = {
+            'device': 'SM-J701F / samsung,j7velte', 'partition': 'USERDATA',
+            'sectors': first_install_script.SECTORS, 'bytes': first_install_script.BYTES,
+            'filesystem_uuid': uuid, 'sd_payload': {'sha256': hashlib.sha256(gz).hexdigest()},
+            'raw_image': {'sha256': 'a' * 64}, 'root_version': 'TEST'}
+        for key, value in json_changes.items():
+            if value is None:
+                meta.pop(key, None)
+            else:
+                meta[key] = value
+        (rel / 'release.json').write_text(json.dumps(meta))
         return rel
+
+    def test_release_json_must_carry_both_matching_hashes_and_the_partition(self):
+        # Codex's review of 2026-10-27: these used to pass unchecked.
+        for changes, message in (({'raw_image': None}, 'userdata.ext4.sha256 disagree'),
+                                 ({'sd_payload': {'sha256': 'b' * 64}}, 'userdata.ext4.gz disagree'),
+                                 ({'sd_payload': None}, 'userdata.ext4.gz disagree'),
+                                 ({'partition': 'SYSTEM'}, 'USERDATA partition')):
+            with self.subTest(changes), self.assertRaisesRegex(ValueError, message):
+                first_install_script.check_release(self.release(**changes))
 
     def fake_card(self, fstype='vfat', removable='1', mounted=True):
         card = self.work / 'card'
