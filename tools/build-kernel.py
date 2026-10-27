@@ -134,13 +134,15 @@ def build(args):
     json_write(report_path, report)
     try:
         src, entry = source(args.profile)
-        if args.profile == 'panfrost':
+        if args.profile in ('panfrost', 'panfrost-7.2'):
             # Claude 2026-10-08: local kernel patches (kernel/patches/linux-*.patch),
             # applied once per extracted tree and recorded beside it.
             patches = [f for pattern in entry.get('patches', ['linux-*.patch'])
                        for f in sorted((ROOT / 'kernel/patches').glob(pattern))]
             apply_patches(src, patches)
-        out = WORK / 'out' / ('vendor-baseline' if args.profile == 'baseline' else 'mainline-panfrost')
+        out_name = {'baseline': 'vendor-baseline', 'panfrost': 'mainline-panfrost',
+                    'panfrost-7.2': 'mainline-panfrost-7.2'}[args.profile]
+        out = WORK / 'out' / out_name
         out.mkdir(parents=True, exist_ok=True)
         env = dict(os.environ, LC_ALL='C', KBUILD_BUILD_USER='burak',
                    KBUILD_BUILD_HOST='j701f-builder', KBUILD_BUILD_VERSION='1',
@@ -185,14 +187,14 @@ def build(args):
             # Re-merge on every invocation. Checking only the previous .config hash
             # misses changes to the fragment: the old config can still match the
             # previous pinned digest while the requested new options are ignored.
-            if args.profile == 'panfrost':
+            if args.profile in ('panfrost', 'panfrost-7.2'):
                 run('defconfig')
                 run('exynos7870.config')
                 subprocess.run(['bash', str(src / 'scripts/kconfig/merge_config.sh'), '-m',
                                 str(out / '.config'), str(ROOT / 'kernel/configs/mainline-bringup.config')],
                                cwd=out, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
             run('olddefconfig')
-            if args.profile == 'panfrost':
+            if args.profile in ('panfrost', 'panfrost-7.2'):
                 require(sha(out / '.config') == entry['resolved_config_sha256'],
                         'Resolved mainline configuration differs; review compiler/fragment changes')
             report['status'] = 'compiling'
@@ -213,7 +215,7 @@ def build(args):
                            'CONFIG_EXYNOS_DECON_7870=y', 'CONFIG_PANEL_EA8061S_J7VE=y',
                            'CONFIG_TOUCHSCREEN_MELFAS_MMS438=y'):
                 require(option in config.splitlines(), 'Baseline hardware option missing: ' + option)
-        if args.profile == 'panfrost':
+        if args.profile in ('panfrost', 'panfrost-7.2'):
             for option in ('CONFIG_DRM=y', 'CONFIG_DRM_PANFROST=y', 'CONFIG_DRM_EXYNOS=y',
                            'CONFIG_DRM_EXYNOS7_DECON=y', 'CONFIG_EXT4_FS=y', 'CONFIG_DEVTMPFS=y'):
                 require(option in config.splitlines(), 'Required option missing: ' + option)
@@ -254,7 +256,7 @@ def build(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('profile', choices=['baseline', 'panfrost'])
+    parser.add_argument('profile', choices=['baseline', 'panfrost', 'panfrost-7.2'])
     parser.add_argument('--jobs', type=int, default=3)
     parser.add_argument('--prepare-only', action='store_true')
     parser.add_argument('--save-vmlinux', action='store_true')

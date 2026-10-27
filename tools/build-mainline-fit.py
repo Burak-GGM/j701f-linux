@@ -131,18 +131,19 @@ def verify(blob, inputs, planned, kernel_compression='none'):
     return dict(inline_payloads_match=True, sha256_hashes_verified=True, load_addresses_match=True)
 
 
-def main(out=OUT, kernel_compression='none', diagnostic_dir=None):
+def main(out=OUT, kernel_compression='none', diagnostic_dir=None, kernel_profile='panfrost'):
     diagnostic_dir = (diagnostic_dir or ROOT / 'build/kernel/j701f-diagnostic').resolve()
     require(diagnostic_dir.is_relative_to(ROOT / 'build/kernel'), 'Diagnostic inputs must be under build/kernel')
     out = out.resolve()
     require(out.is_relative_to(ROOT / 'build/kernel'), 'Output must be under build/kernel')
     require(kernel_compression in ('none', 'gzip'), 'Unsupported kernel compression')
+    require(kernel_profile in ('panfrost', 'panfrost-7.2'), 'Unsupported kernel profile')
     require(kernel_compression == 'none' or out != OUT, 'Use a separate output for the gzip variant')
     hardware = json.loads((ROOT / 'kernel/j701f-hardware.json').read_text())
-    inputs = dict(kernel=ROOT / 'build/kernel/panfrost/Image',
+    inputs = dict(kernel=ROOT / 'build/kernel' / kernel_profile / 'Image',
                   fdt=diagnostic_dir / 'exynos7870-j7velte-diagnostic.dtb',
                   initramfs=diagnostic_dir / 'initramfs.cpio.gz')
-    reports = {'kernel': ROOT / 'build/kernel/panfrost/report.json',
+    reports = {'kernel': ROOT / 'build/kernel' / kernel_profile / 'report.json',
                'fdt': diagnostic_dir / 'report.json',
                'initramfs': diagnostic_dir / 'initramfs-report.json'}
     for key, path in inputs.items():
@@ -217,6 +218,7 @@ def main(out=OUT, kernel_compression='none', diagnostic_dir=None):
     (out / 'j701f-fit-payload.h').write_text(header)
     (out / 'report.json').write_text(json.dumps(dict(
         status='packaged', phone_modified=False, hardware_boot_tested=False, flash_ready=False,
+        kernel_profile=kernel_profile,
         inputs={key: dict(path=str(path.relative_to(ROOT)), sha256=sha(path)) for key, path in inputs.items()},
         layout=planned, validation=validation, fit_bytes=len(blob), fit_sha256=digest.hex(),
         kernel_compression=kernel_compression, kernel_uncompressed_bytes=len(image),
@@ -233,6 +235,7 @@ if __name__ == '__main__':
     parser.add_argument('--kernel-compression', choices=('none', 'gzip'), default='none')
     parser.add_argument('--output-dir', type=Path)
     parser.add_argument('--diagnostic-dir', type=Path)
+    parser.add_argument('--kernel-profile', choices=('panfrost', 'panfrost-7.2'), default='panfrost')
     args = parser.parse_args()
     out = args.output_dir or (OUT if args.kernel_compression == 'none' else ROOT / 'build/kernel/handoff-gzip')
-    main(out, args.kernel_compression, args.diagnostic_dir)
+    main(out, args.kernel_compression, args.diagnostic_dir, args.kernel_profile)

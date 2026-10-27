@@ -100,7 +100,7 @@ SIMD is available, 32 lines per section; the scalar code stays as fallback.
  		u32 *d = dst;
 --- /dev/null
 +++ b/drivers/gpu/drm/sysfb/drm_sysfb_j701f_neon.c
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,57 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Written by Claude 2026-10-10 (J701F local). NEON line converters for the
@@ -110,6 +110,10 @@ SIMD is available, 32 lines per section; the scalar code stays as fallback.
 + */
 +#include <linux/types.h>
 +#include <asm/neon-intrinsics.h>
++
++/* arm_neon.h imports compiler stdint.h; kernel limits owns these names. */
++#undef UINTPTR_MAX
++#undef SIZE_MAX
 +
 +#include "drm_sysfb_helper.h"
 +

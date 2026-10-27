@@ -27,23 +27,25 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def build(worker):
+def build(worker, kernel_profile='panfrost'):
     lock = ROOT / 'build/coord/locks/kbuild'
     require((lock / 'owner').is_file() and (lock / 'owner').read_text().strip() == worker,
             'Acquire the kbuild lock for this worker with tools/coord.sh first')
     expiry = int((lock / 'time').read_text()) + 60 * int((lock / 'ttl').read_text())
     require(expiry - time.time() >= 120, 'Renew kbuild lock; less than two minutes remain')
 
-    inputs = json.loads((ROOT / 'kernel/inputs.json').read_text())['panfrost']
+    require(kernel_profile in ('panfrost', 'panfrost-7.2'), 'Unsupported kernel profile')
+    inputs = json.loads((ROOT / 'kernel/inputs.json').read_text())[kernel_profile]
     src = WORK / 'sources' / inputs['directory']
-    out = WORK / 'out/mainline-panfrost'
+    out = WORK / 'out' / ('mainline-panfrost-7.2' if kernel_profile == 'panfrost-7.2' else 'mainline-panfrost')
+    artifact = ARTIFACT if kernel_profile == 'panfrost' else ROOT / 'build/kernel/ea8061s-prototype-7.2'
     require((src / 'Makefile').is_file(), 'Prepared mainline source tree missing')
     require((out / 'Module.symvers').is_file(), 'Build the configured kernel first')
     require((out / 'arch/arm64/boot/Image').is_file(), 'Compiled ARM64 Image missing')
     require(sha(out / '.config') == inputs['resolved_config_sha256'],
             'Shared resolved config does not match kernel/inputs.json')
 
-    module_dir = ARTIFACT / 'module'
+    module_dir = artifact / 'module'
     module_dir.mkdir(parents=True, exist_ok=True)
     for name in ('Makefile', *(name + '.c' for name in MODULES)):
         shutil.copy2(SOURCES / name, module_dir / name)
@@ -55,6 +57,7 @@ def build(worker):
                'M=' + str(module_dir), 'W=1', 'modules']
     report = dict(stage='EA8061S panel and read-only display-info prototypes',
                   time=datetime.now(timezone.utc).isoformat(), built=False,
+                  kernel_profile=kernel_profile,
                   panel_hardware_tested=False, phone_modified=False,
                   installed=False, worker=worker, make_command=command,
                   kernel_release=(out / 'include/config/kernel.release').read_text().strip(),
@@ -65,9 +68,9 @@ def build(worker):
                   limitations=['No active display device tree',
                                'Fixed initial gamma only; no calibrated brightness',
                                'DECON DMA, SysMMU integration and takeover untested'])
-    report_path = ARTIFACT / 'report.json'
+    report_path = artifact / 'report.json'
     report_path.write_text(json.dumps(report, indent=2) + '\n')
-    with (ARTIFACT / 'build.log').open('w') as log:
+    with (artifact / 'build.log').open('w') as log:
         subprocess.run(command, env=env, check=True, stdout=log, stderr=subprocess.STDOUT)
 
     for name in MODULES:
@@ -75,20 +78,21 @@ def build(worker):
         data = module.read_bytes()
         require(data[:6] == b'\x7fELF\x02\x01' and struct.unpack_from('<H', data, 18)[0] == 183,
                 name + ': not a little-endian AArch64 ELF module')
-        shutil.copy2(module, ARTIFACT / module.name)
+        shutil.copy2(module, artifact / module.name)
         report[name] = dict(source_sha256=sha(SOURCES / (name + '.c')),
                             module_sha256=sha(module), bytes=module.stat().st_size)
     report['built'] = True
     report_path.write_text(json.dumps(report, indent=2) + '\n')
-    print('Built AArch64 modules:', ARTIFACT)
+    print('Built AArch64 modules:', artifact)
     print('No phone installation or loading performed. See build.log and report.json.')
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--worker', choices=('codex', 'claude'), default='codex')
+    parser.add_argument('--kernel-profile', choices=('panfrost', 'panfrost-7.2'), default='panfrost')
     args = parser.parse_args()
     try:
-        build(args.worker)
+        build(args.worker, args.kernel_profile)
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         raise SystemExit('Display prototype build: ' + str(exc))

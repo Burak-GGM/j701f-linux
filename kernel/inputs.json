@@ -24,6 +24,21 @@
     "resolved_config_sha256": "47f059cab9f39f9e14cbb474f3e3f6af16d00206c0ec31549b0be396014d43ca",
     "note": "Claude 2026-10-09: 7.1 migration base. Checksum from kernel.org sha256sums.asc; signature not verified. 2026-10-17: HID gadget enabled; host lld23/rustc1.99 metadata also changes the resolved config; the semantic delta against the prior config was reviewed. 2026-10-18: basic BT_LE enabled (ECRED disabled), HID retained; exact .config diff reviewed."
   },
+  "panfrost-7.2": {
+    "repository": "https://cdn.kernel.org/pub/linux/kernel/v7.x/",
+    "ref": "v7.2.13 stable + exynos7870-mainline exynos7870/7.1 patches 01-04 + local patches",
+    "commit": "v7.2.13",
+    "archive": "linux-7.2.13.tar.xz",
+    "directory": "linux-7.2.13",
+    "url": "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.2.13.tar.xz",
+    "sha256": "08e7b0c4f2dd1971f972da274b5e589a98989390ac56acd7a1a5af922363ea6c",
+    "patches": [
+      "exynos7870-7.2/*.patch",
+      "linux-*.patch"
+    ],
+    "resolved_config_sha256": "94b533e02182e1c4221d06c0a574de79cc0d4a864a077dc492462e11135688d3",
+    "note": "Host-only 7.2 migration. Community patches 05 and 06 are already present upstream in 7.2.13. The configuration digest is from the successful host trial and must match a clean build-kernel.py run before packaging."
+  },
   "panfrost-6.15": {
     "repository": "https://gitlab.com/exynos7870-mainline/linux",
     "ref": "exynos7870/6.15",

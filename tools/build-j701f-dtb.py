@@ -142,16 +142,20 @@ def verify(dtb, allow_emmc=False, allow_gpu=False, allow_wifi=False, allow_audio
                 psci_matches_live=True, regulator_constraints_match_live=True)
 
 
-def build(dts=DTS, out=OUT, allow_emmc=False, allow_gpu=False, allow_wifi=False, allow_audio=False, allow_sd=False, allow_mfc=False):
+def build(dts=DTS, out=OUT, allow_emmc=False, allow_gpu=False, allow_wifi=False, allow_audio=False, allow_sd=False, allow_mfc=False,
+          kernel_profile='panfrost'):
     dts, out = dts.resolve(), out.resolve()
     if not dts.is_relative_to(ROOT / "kernel/dts") or not out.is_relative_to(ROOT / "build/kernel"):
         raise ValueError("Unexpected diagnostic source/output path")
     dtb = out / "exynos7870-j7velte-diagnostic.dtb"
     module = builder()
-    src, entry = module.source('panfrost')
+    if kernel_profile not in ('panfrost', 'panfrost-7.2'):
+        raise ValueError('Unsupported kernel profile')
+    src, entry = module.source(kernel_profile)
     out.mkdir(parents=True, exist_ok=True)
     report = dict(status='preparing', phone_modified=False, hardware_boot_tested=False,
-                  flash_ready=False, source=entry, board_source=str(dts.relative_to(ROOT)))
+                  flash_ready=False, source=entry, kernel_profile=kernel_profile,
+                  board_source=str(dts.relative_to(ROOT)))
     module.json_write(out / 'report.json', report)
     try:
         preprocessed = out / 'board.preprocessed.dts'
@@ -192,6 +196,7 @@ if __name__ == '__main__':
     parser.add_argument('--verify', type=Path, help='Verify an existing diagnostic DTB instead of building')
     parser.add_argument('--source', type=Path, default=DTS)
     parser.add_argument('--output-dir', type=Path, default=OUT)
+    parser.add_argument('--kernel-profile', choices=('panfrost', 'panfrost-7.2'), default='panfrost')
     parser.add_argument('--allow-emmc', action='store_true',
                         help='Permit an enabled mmc0 (eMMC enumeration stage); SD/SDIO and GPU stay disabled')
     parser.add_argument('--allow-gpu', action='store_true',
@@ -208,4 +213,5 @@ if __name__ == '__main__':
     if args.verify:
         print(json.dumps(verify(args.verify, args.allow_emmc, args.allow_gpu, args.allow_wifi, args.allow_audio, args.allow_sd, args.allow_mfc), indent=2))
     else:
-        build(args.source, args.output_dir, args.allow_emmc, args.allow_gpu, args.allow_wifi, args.allow_audio, args.allow_sd, args.allow_mfc)
+        build(args.source, args.output_dir, args.allow_emmc, args.allow_gpu, args.allow_wifi, args.allow_audio,
+              args.allow_sd, args.allow_mfc, args.kernel_profile)

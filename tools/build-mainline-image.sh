@@ -7,6 +7,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 N=${1:?name}; DTS=${2:?dts}; EXTRA=${3:-}   # optional third argument: extra verifier flags, e.g. "--allow-audio --allow-sd"
+KERNEL_PROFILE=${J701F_KERNEL_PROFILE:-panfrost}
+case "$KERNEL_PROFILE" in panfrost|panfrost-7.2) ;; *) echo "Unsupported kernel profile: $KERNEL_PROFILE" >&2; exit 2;; esac
 J=build/kernel/j701f-$N; H=build/kernel/handoff-$N; L=build/kernel/uboot-j701f-$N; SRC=build/kernel/j701f-wifi
 mkdir -p "$J"; cp -r "$SRC/firmware" "$SRC/i2c-peek" "$SRC/reboot-recovery" "$J/"
 # Claude 2026-10-10: J701F_RECOVERY_UI=path/to/recovery-ui (AArch64, static) builds the
@@ -19,7 +21,7 @@ if [ -n "${J701F_RECOVERY_UI:-}" ]; then
     [ -d build/recovery-ui/e2fsck ] && RECOVERY_ARGS="$RECOVERY_ARGS --recovery-tools build/recovery-ui/e2fsck"
 fi
 q() { "$@" 2>&1 | tail -1 | cut -c1-76; [ "${PIPESTATUS[0]}" = 0 ] || exit 1; }
-q python3 tools/build-j701f-dtb.py --allow-emmc --allow-gpu --allow-wifi $EXTRA --source "$DTS" --output-dir "$J"
+q python3 tools/build-j701f-dtb.py --kernel-profile "$KERNEL_PROFILE" --allow-emmc --allow-gpu --allow-wifi $EXTRA --source "$DTS" --output-dir "$J"
 q python3 tools/build-mainline-initramfs.py --output-dir "$J" --helper "$J/i2c-peek" --helper "$J/reboot-recovery" \
     --extra alpine-handoff --extra alpine-usb-debug $RECOVERY_ARGS \
     --firmware "$J/firmware/brcmfmac43430-sdio.bin:brcm/brcmfmac43430-sdio.bin" \
@@ -27,7 +29,7 @@ q python3 tools/build-mainline-initramfs.py --output-dir "$J" --helper "$J/i2c-p
     --firmware "$J/firmware/brcmfmac43430-sdio.txt:brcm/brcmfmac43430-sdio.txt" \
     --firmware "$J/firmware/BCM43430A1.hcd:brcm/BCM43430A1.hcd" \
     --firmware "$J/firmware/BCM43430A1.hcd:brcm/BCM.hcd"
-q python3 tools/build-mainline-fit.py --kernel-compression gzip --diagnostic-dir "$J" --output-dir "$H"
+q python3 tools/build-mainline-fit.py --kernel-profile "$KERNEL_PROFILE" --kernel-compression gzip --diagnostic-dir "$J" --output-dir "$H"
 q python3 tools/build-j701f-uboot.py --jobs 8 --embed-fit --fit-dir "$H" --artifact-dir "$L"
 q python3 tools/package-embedded-mainline-diagnostic.py --fit-dir "$H" --loader-dir "$L"
 q python3 tools/validate-embedded-ramboot-guards.py --fit-dir "$H" --loader-dir "$L"
