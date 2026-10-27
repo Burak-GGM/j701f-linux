@@ -75,6 +75,11 @@ class DiagnosticsTests(unittest.TestCase):
                 tty.mkdir(parents=True)
                 (tty / 'device').symlink_to(device / 'interface')
             self.assertEqual(console.find_ports(root / 'tty'), ['/dev/ttyACM0'])
+            # The recovery's gadget serial is accepted only when asked for.
+            ((root / 'tty/ttyACM1/device').resolve().parent / 'serial').write_text(console.MAINLINE_SERIAL + '\n')
+            self.assertEqual(console.find_ports(root / 'tty'), ['/dev/ttyACM0'])
+            self.assertEqual(console.find_ports(root / 'tty', serials=(console.SERIAL, console.MAINLINE_SERIAL)),
+                             ['/dev/ttyACM0', '/dev/ttyACM1'])
 
     def run_setup(self, function='acm', include_instances=True, reject_function=False):
         """All sysfs/device paths redirected to a disposable fixture, no phone I/O."""

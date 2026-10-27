@@ -84,7 +84,8 @@ def serial_command(api, script, required, timeout=30, *, retry=True,
                    retry_missing_marker=False, max_wait=180):
     end = time.monotonic() + (max_wait if retry else 30)
     while time.monotonic() < end:
-        ports = api.find_ports()
+        # The RAM recovery's gadget is 'j701f-diagnostic', not the stage-1 console's serial.
+        ports = api.find_ports(serials=(api.SERIAL, api.MAINLINE_SERIAL))
         if len(ports) == 1:
             try:
                 fd = os.open(ports[0], os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
@@ -161,6 +162,8 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--erase-userdata', action='store_true')
     parser.add_argument('--reboot', action='store_true')
+    parser.add_argument('--from-recovery', action='store_true',
+                        help='the release is already on the SD and the phone is in the held RAM recovery')
     parser.add_argument('--backup-userdata', action='store_true',
                         help='save and verify a complete split USERDATA backup on the SD before erasing')
     args = parser.parse_args()
@@ -175,55 +178,6 @@ def main():
         print('Dry run: pass --execute --erase-userdata to perform the installation.')
         return
 
-    phone_ip = args.phone_ip or os.environ.get('J701F_PHONE_IP')
-    if not phone_ip and (ROOT / '.phone-ip').exists():
-        phone_ip = (ROOT / '.phone-ip').read_text().strip()
-    if not phone_ip:
-        raise ValueError('Supply --phone-ip or J701F_PHONE_IP for the running phone')
-    ipaddress.IPv4Address(phone_ip)
-    known_hosts = args.known_hosts.resolve()
-    if not known_hosts.is_file():
-        raise ValueError(f'Pinned SSH known-hosts file is missing: {known_hosts}')
-
-    ssh_opts = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8',
-                '-o', 'StrictHostKeyChecking=yes', '-o',
-                f'UserKnownHostsFile={known_hosts}']
-    host = f'burak-alpine@{phone_ip}'
-    def ssh(command, *, timeout=30, capture=False):
-        return run(['ssh', *ssh_opts, host, command], timeout=timeout, capture=capture)
-
-    running = ssh("uname -m; uname -r; awk '$2==\"/\" {print $1, $3, $4}' /proc/mounts",
-                  capture=True)
-    if 'aarch64' not in running or '7.1.' not in running or '/dev/mmcblk0p24 ext4 rw' not in running:
-        raise ValueError(f'Phone is not running the expected mainline DATA system:\n{running}')
-    capacity = int(ssh('cat /sys/class/power_supply/s2mu005-fuel-gauge/capacity',
-                       capture=True))
-    charging = ssh('cat /sys/class/power_supply/s2mu005-charger/online',
-                   capture=True)
-    if capacity < 50 and charging != '1':
-        raise ValueError(f'Battery is only {capacity}% and no charger is online')
-    print('Phone mainline system verified. Staging release on external SD.')
-    sd_source = ssh("awk '$2==\"/media/sdcard\" && $3==\"vfat\" {print $1}' /proc/mounts",
-                    capture=True)
-    match = re.fullmatch(r'/dev/(mmcblk[0-9]+)p[0-9]+', sd_source)
-    if not match:
-        raise ValueError(f'External FAT SD is not mounted at /media/sdcard: {sd_source!r}')
-    sd_type = ssh(f'cat /sys/class/block/{match.group(1)}/device/type', capture=True)
-    if sd_type != 'SD':
-        raise ValueError('Mounted storage is not an external SD card')
-    sd_free_kib = int(ssh("df -k /media/sdcard | awk 'NR==2 {print $4}'", capture=True))
-    required_bytes = (source / FILES[0]).stat().st_size + 256 * 1024 * 1024
-    if args.backup_userdata:
-        required_bytes += 11936989184
-    required_kib = (required_bytes + 1023) // 1024
-    if sd_free_kib < required_kib:
-        raise ValueError(f'External SD has insufficient free space ({sd_free_kib} KiB)')
-    ssh('test -x /home/burak-alpine/j701f/boot-swap/reboot-recovery && '
-        'test -f /home/burak-alpine/j701f/boot-swap/reboot-recovery.sh')
-    remote_reboot_wrapper = ssh('sha256sum /home/burak-alpine/j701f/boot-swap/reboot-recovery.sh '
-                                '| cut -d" " -f1', capture=True)
-    if remote_reboot_wrapper != digest(ROOT / 'system/reboot-recovery.sh'):
-        raise ValueError('Phone recovery-reboot wrapper differs from this repository')
     extra = {
         'install-release-on-recovery.sh': ROOT / 'scripts/install-release-on-recovery.sh',
         'restore-userdata-on-recovery.sh': ROOT / 'scripts/restore-userdata-on-recovery.sh',
@@ -231,52 +185,125 @@ def main():
     }
     names = (*FILES, *extra)
     mtp_mount = None
-    if args.mtp_sd:
-        mtp_sd = args.mtp_sd.resolve()
-        if not mtp_sd.is_dir() or not os.path.ismount(mtp_sd.parent):
-            raise ValueError(f'--mtp-sd is not inside a mounted MTP filesystem: {mtp_sd}')
-        mtp_mount = mtp_sd.parent
-        mtp_release = mtp_sd / 'j701f-release'
-        mtp_release.mkdir(exist_ok=True)
+    # --from-recovery: the release was staged earlier and the phone already sits in
+    # the held RAM recovery (for example after a lost first serial contact); skip
+    # staging and the reboot, and check the SD copies from inside the recovery.
+    if not args.from_recovery:
+        phone_ip = args.phone_ip or os.environ.get('J701F_PHONE_IP')
+        if not phone_ip and (ROOT / '.phone-ip').exists():
+            phone_ip = (ROOT / '.phone-ip').read_text().strip()
+        if not phone_ip:
+            raise ValueError('Supply --phone-ip or J701F_PHONE_IP for the running phone')
+        ipaddress.IPv4Address(phone_ip)
+        known_hosts = args.known_hosts.resolve()
+        if not known_hosts.is_file():
+            raise ValueError(f'Pinned SSH known-hosts file is missing: {known_hosts}')
+
+        ssh_opts = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8',
+                    '-o', 'StrictHostKeyChecking=yes', '-o',
+                    f'UserKnownHostsFile={known_hosts}']
+        host = f'burak-alpine@{phone_ip}'
+        def ssh(command, *, timeout=30, capture=False):
+            return run(['ssh', *ssh_opts, host, command], timeout=timeout, capture=capture)
+
+        running = ssh("uname -m; uname -r; awk '$2==\"/\" {print $1, $3, $4}' /proc/mounts",
+                      capture=True)
+        if 'aarch64' not in running or '7.1.' not in running or '/dev/mmcblk0p24 ext4 rw' not in running:
+            raise ValueError(f'Phone is not running the expected mainline DATA system:\n{running}')
+        capacity = int(ssh('cat /sys/class/power_supply/s2mu005-fuel-gauge/capacity',
+                           capture=True))
+        charging = ssh('cat /sys/class/power_supply/s2mu005-charger/online',
+                       capture=True)
+        if capacity < 50 and charging != '1':
+            raise ValueError(f'Battery is only {capacity}% and no charger is online')
+        print('Phone mainline system verified. Staging release on external SD.')
+        sd_source = ssh("awk '$2==\"/media/sdcard\" && $3==\"vfat\" {print $1}' /proc/mounts",
+                        capture=True)
+        match = re.fullmatch(r'/dev/(mmcblk[0-9]+)p[0-9]+', sd_source)
+        if not match:
+            raise ValueError(f'External FAT SD is not mounted at /media/sdcard: {sd_source!r}')
+        sd_type = ssh(f'cat /sys/class/block/{match.group(1)}/device/type', capture=True)
+        if sd_type != 'SD':
+            raise ValueError('Mounted storage is not an external SD card')
+        sd_free_kib = int(ssh("df -k /media/sdcard | awk 'NR==2 {print $4}'", capture=True))
+        required_bytes = (source / FILES[0]).stat().st_size + 256 * 1024 * 1024
+        if args.backup_userdata:
+            required_bytes += 11936989184
+        required_kib = (required_bytes + 1023) // 1024
+        if sd_free_kib < required_kib:
+            raise ValueError(f'External SD has insufficient free space ({sd_free_kib} KiB)')
+        ssh('test -x /home/burak-alpine/j701f/boot-swap/reboot-recovery && '
+            'test -f /home/burak-alpine/j701f/boot-swap/reboot-recovery.sh')
+        remote_reboot_wrapper = ssh('sha256sum /home/burak-alpine/j701f/boot-swap/reboot-recovery.sh '
+                                    '| cut -d" " -f1', capture=True)
+        if remote_reboot_wrapper != digest(ROOT / 'system/reboot-recovery.sh'):
+            raise ValueError('Phone recovery-reboot wrapper differs from this repository')
+        extra = {
+            'install-release-on-recovery.sh': ROOT / 'scripts/install-release-on-recovery.sh',
+            'restore-userdata-on-recovery.sh': ROOT / 'scripts/restore-userdata-on-recovery.sh',
+            'recovery-install-job.sh': ROOT / 'scripts/recovery-install-job.sh',
+        }
+        names = (*FILES, *extra)
+        mtp_mount = None
+        if args.mtp_sd:
+            mtp_sd = args.mtp_sd.resolve()
+            if not mtp_sd.is_dir() or not os.path.ismount(mtp_sd.parent):
+                raise ValueError(f'--mtp-sd is not inside a mounted MTP filesystem: {mtp_sd}')
+            mtp_mount = mtp_sd.parent
+            mtp_release = mtp_sd / 'j701f-release'
+            mtp_release.mkdir(exist_ok=True)
+            for name in names:
+                path = source / name if name in FILES else extra[name]
+                print(f'Copying {name} to the external SD through USB MTP.')
+                shutil.copyfile(path, mtp_release / name)
+        else:
+            ssh(f'mkdir -p {STAGE}')
+            for name in FILES:
+                run(['scp', *ssh_opts, '-q', str(source / name), f'{host}:{STAGE}/{name}'],
+                    timeout=1800)
+            for name, path in extra.items():
+                run(['scp', *ssh_opts, '-q', str(path), f'{host}:{STAGE}/{name}'], timeout=60)
+            copies = ' && '.join(f'sudo -n cp {STAGE}/{name} {SD}/{name}' for name in names)
+            ssh(f'sudo -n mkdir -p {SD} && {copies} && sync', timeout=1800)
+        # Validate through the phone's physical SD mount, independent of which
+        # transport (MTP or SSH) copied the files.
+        hash_output = ssh('sudo -n sha256sum ' + ' '.join(f'{SD}/{name}' for name in names),
+                          timeout=1800, capture=True)
+        remote_hashes = {Path(path).name: value for value, path in
+                         (line.split(maxsplit=1) for line in hash_output.splitlines())}
         for name in names:
-            path = source / name if name in FILES else extra[name]
-            print(f'Copying {name} to the external SD through USB MTP.')
-            shutil.copyfile(path, mtp_release / name)
-    else:
-        ssh(f'mkdir -p {STAGE}')
-        for name in FILES:
-            run(['scp', *ssh_opts, '-q', str(source / name), f'{host}:{STAGE}/{name}'],
-                timeout=1800)
-        for name, path in extra.items():
-            run(['scp', *ssh_opts, '-q', str(path), f'{host}:{STAGE}/{name}'], timeout=60)
-        copies = ' && '.join(f'sudo -n cp {STAGE}/{name} {SD}/{name}' for name in names)
-        ssh(f'sudo -n mkdir -p {SD} && {copies} && sync', timeout=1800)
-    # Validate through the phone's physical SD mount, independent of which
-    # transport (MTP or SSH) copied the files.
-    hash_output = ssh('sudo -n sha256sum ' + ' '.join(f'{SD}/{name}' for name in names),
-                      timeout=1800, capture=True)
-    remote_hashes = {Path(path).name: value for value, path in
-                     (line.split(maxsplit=1) for line in hash_output.splitlines())}
-    for name in names:
-        local_path = source / name if name in FILES else extra[name]
-        wanted = expected if name == 'userdata.ext4.gz' else digest(local_path)
-        if remote_hashes.get(name) != wanted:
-            raise ValueError(f'SD copy of {name} has a checksum mismatch; refusing reboot')
-    if mtp_mount:
-        unmount = shutil.which('fusermount') or shutil.which('fusermount3')
-        if unmount:
-            run([unmount, '-u', str(mtp_mount)], timeout=30)
-            print('Host MTP mount released before the phone changes USB mode.')
-    print('Every SD release file verified. Rebooting into RAM recovery.')
-    ssh("sudo -n sh -c '(sleep 1; sh /home/burak-alpine/j701f/boot-swap/reboot-recovery.sh --execute) >/dev/null 2>&1 &'", timeout=15)
+            local_path = source / name if name in FILES else extra[name]
+            wanted = expected if name == 'userdata.ext4.gz' else digest(local_path)
+            if remote_hashes.get(name) != wanted:
+                raise ValueError(f'SD copy of {name} has a checksum mismatch; refusing reboot')
+        if mtp_mount:
+            unmount = shutil.which('fusermount') or shutil.which('fusermount3')
+            if unmount:
+                run([unmount, '-u', str(mtp_mount)], timeout=30)
+                print('Host MTP mount released before the phone changes USB mode.')
+        print('Every SD release file verified. Rebooting into RAM recovery.')
+        ssh("sudo -n sh -c '(sleep 1; sh /home/burak-alpine/j701f/boot-swap/reboot-recovery.sh --execute) >/dev/null 2>&1 &'", timeout=15)
     api = serial_api()
     ready = serial_command(api, '''
 test -d /run/recovery-state && test -x /recovery/scripts/storage.sh || exit 1
 : > /run/recovery-state/stay
 sh /recovery/scripts/storage.sh mount-sd
 printf 'RECOVERY_READY\\n'
-''', 'RECOVERY_READY', 25, retry_missing_marker=True)
+''', 'RECOVERY_READY', 25, retry_missing_marker=True, max_wait=420)
     print(ready)
+    if args.from_recovery:
+        # Nothing was copied in this run: check every SD file from the recovery itself.
+        listing = serial_command(api, 'busybox sha256sum ' + ' '.join(f'{RECOVERY_SD}/{name}' for name in names)
+                                 + "\nprintf 'SD_HASHES_DONE\\n'\n", 'SD_HASHES_DONE', 600)
+        # The shell prompt can precede the first line, so search rather than split.
+        remote = {Path(path).name: value for value, path in
+                  re.findall(r'\b([0-9a-f]{64})\s+(/mnt/sd/\S+)', listing)}
+        for name in names:
+            local_path = source / name if name in FILES else extra[name]
+            wanted = expected if name == 'userdata.ext4.gz' else digest(local_path)
+            if remote.get(name) != wanted:
+                raise ValueError(f'SD copy of {name} differs from this release; stage it again without --from-recovery')
+        print('Every SD release file verified from inside the recovery.')
     # recovery-main starts a one-shot Wi-Fi/MTP worker eight seconds after
     # entry. Wait for MTP startup to begin and both helper scripts to finish;
     # otherwise that worker could remount the old DATA after our unmount.
@@ -300,8 +327,23 @@ printf 'RECOVERY_STARTUP_SETTLED\\n'
                              max_wait=300)
     print(settled)
     print('Closing recovery Wi-Fi/MTP and unmounting old DATA before installation.')
+    # mtp.sh down unbinds the USB gadget, which hangs up this very serial shell;
+    # run from it directly, it died before binding the gadget again and left
+    # the phone without USB (seen on the first hardware run, 2026-10-27). Run it
+    # detached, let USB come back, then check that the MTP function is gone.
+    serial_command(api, '''
+/bin/busybox setsid /bin/sh -c 'sleep 2; exec /bin/sh /recovery/scripts/mtp.sh down' </dev/null >/run/j701f-mtp-down.log 2>&1 &
+printf 'MTP_DOWN_STARTED\\n'
+''', 'MTP_DOWN_STARTED', 20, retry=False)
+    time.sleep(15)
+    mtp_gone = serial_command(api, '''
+G=/sys/kernel/config/usb_gadget/j701f_diagnostic
+test ! -e $G/configs/c.1/ffs.mtp || exit 1
+test -n "$(cat $G/UDC)" || exit 1
+printf 'MTP_DOWN_DONE\\n'
+''', 'MTP_DOWN_DONE', 20, retry_missing_marker=True, max_wait=180)
+    print(mtp_gone)
     prepared = serial_command(api, '''
-sh /recovery/scripts/mtp.sh down >/dev/null 2>&1 || :
 sh /recovery/scripts/wifi.sh down >/dev/null 2>&1 || :
 if grep -q ' /mnt/root ' /proc/mounts; then umount /mnt/root || exit 1; fi
 sh /mnt/sd/j701f-release/install-release-on-recovery.sh --source /mnt/sd/j701f-release --erase-userdata

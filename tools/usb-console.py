@@ -214,14 +214,18 @@ def probe(port, display_test=False, activate_test=False, swap_rb=False, terminal
         os.close(fd)
 
 
-def find_ports(sys_tty=Path('/sys/class/tty')):
+# The mainline initramfs and the project's recovery name their gadget like this.
+MAINLINE_SERIAL = 'j701f-diagnostic'
+
+
+def find_ports(sys_tty=Path('/sys/class/tty'), serials=(SERIAL,)):
     ports = []
     for node in sorted(sys_tty.glob('ttyACM*')):
         device = (node / 'device').resolve()
         for parent in (device, *device.parents):
             serial = parent / 'serial'
             if serial.is_file():
-                if serial.read_text().strip() == SERIAL:
+                if serial.read_text().strip() in serials:
                     ports.append('/dev/' + node.name)
                 break
     return ports
