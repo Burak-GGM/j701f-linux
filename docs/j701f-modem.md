@@ -35,16 +35,20 @@ according to the last recorded check.
   into the public repository. Deep REA decompilation was unavailable on the
   host because no compatible Ghidra/Hopper/IDA provider is configured; those
   strings are static observations, not a complete reconstructed algorithm.
-- A prior read-only phone check saw `CP_CTRL` 0xB through the secure monitor,
-  but uninitialized IPC memory and zero mailbox values. That is not evidence
-  of a running baseband. The earlier RADIO TOC log named `TOC`, `BOOT`, `MAIN`,
+- A prior read-only phone check received raw SMC `a0=0xb`, which the vendor
+  `pmu-cp.c` defines as **error 11**: valid control bits are shifted into
+  `a0[31:16]` and `a0[15:0]` must be zero. Thus `0xb` never proved CP power
+  or start. IPC memory was uninitialized and mailbox values were zero. The
+  earlier RADIO TOC log named `TOC`, `BOOT`, `MAIN`,
   `NV`, `OFFSET`, with `BOOT` and `MAIN` load addresses around `0x40000000`.
   The installed partition's header is now saved only in ignored `build/modem/`.
 - Claude loaded `j701f_modem_state` once on 2026-10-28 with the `phone` lock.
   It exited with the intended `-ENODEV`, left no module resident and caused
-  no oops or abort. It read `CP_CTRL_NS=0xb` via SMC, and mailbox pending,
-  CP message, CP status and CP active were all zero. This repeats the earlier
-  finding: the PMU bits alone do not mean the CP link is running.
+  no oops or abort. It logged raw SMC `a0=0xb` (error 11, not control bits),
+  and mailbox pending, CP message, CP status and CP active were all zero.
+  Stage A later logged raw `0x06a00000`, which decodes to CP_CTRL_NS `0x06a0`
+  with `PWRON` clear; CP_CTRL_S was not read. This still does not establish
+  an IPC link.
 
 The 32-byte TOC entry layout (12-byte name, then five little-endian 32-bit
 fields) is corroborated by the [Comsecuris Samsung TOC template](https://github.com/Comsecuris/shannonRE/blob/master/010/sam.bt)
@@ -99,7 +103,8 @@ device-unique NV material.
 4. Keep any authorized NV data in a private copy with writes in RAM until the
    CP is stable. RFS/telephony userspace and then calls, SMS and data come
    after a successful link. A host-only SIPC5/RFS prototype and stack decision
-   are in [userspace notes](j701f-modem-userspace.md). Cellular transmissions
+   are in [userspace notes](j701f-modem-userspace.md); the bounded power/start
+   review is in [Stage B notes](j701f-modem-stage-b.md). Cellular transmissions
    have not been attempted.
 
 Every phone-side stage must preserve the existing BOOT recovery path. Never

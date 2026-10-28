@@ -37,6 +37,16 @@ static int __init j701f_modem_state_init(void)
 		      0, 0, 0, 0, &res);
 	pr_info("j701f_modem_state: CP_CTRL_NS via SMC: a0=%#lx a1=%#lx\n",
 		res.a0, res.a1);
+	/* Vendor pmu-cp.c returns control bits in a0[31:16], error in [15:0]. */
+	if (res.a0 >> 32)
+		pr_info("j701f_modem_state: CP_CTRL_NS read returned unexpected upper bits\n");
+	else if (res.a0 & 0xffff)
+		pr_info("j701f_modem_state: CP_CTRL_NS read failed: error=%#lx\n",
+			res.a0 & 0xffff);
+	else
+		pr_info("j701f_modem_state: CP_CTRL_NS decoded=%#lx PWRON=%u RESET_SET=%u\n",
+			res.a0 >> 16, !!(res.a0 & (1UL << 17)),
+			!!(res.a0 & (1UL << 18)));
 
 	mbox = ioremap(MBOX_BASE, SZ_4K);
 	if (!mbox) {

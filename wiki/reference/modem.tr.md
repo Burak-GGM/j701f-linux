@@ -16,11 +16,14 @@ USB seri üzerinden yazmadan okudu; başlık fabrika paketiyle birebir aynı.
 Araç imzayı doğrulamaz ve modemi başlatmaz.
 
 Tek seferlik salt okunur mailbox tanılama modülü derlenip bir kez yüklendi.
-Güvenli monitör üzerinden CP güç kaydı `0xb`, CP mailbox kayıtları sıfır
-okundu; modül sonra kendiliğinden çıktı. Claude'un sonraki sınırlı denemesinde
-BOOT ve MAIN ayrılmış CP RAM'ine kopyalandı ve güvenli monitör bunları kabul
-etti. CP'ye güç verilip başlatılmadı; modem bağlantısı hâlâ etkin değil.
-Telefon bölümlerine yazılmadı.
+Güvenli monitörün ham dönüşü `0xb` idi; bu CP güç bitleri değil, hata kodu.
+CP mailbox kayıtları sıfırdı. Claude'un sonraki sınırlı denemesinde BOOT ve
+MAIN ayrılmış CP RAM'ine kopyalandı ve güvenli monitör bunları kabul etti.
+Çözülen CP_CTRL_NS değeri `0x06a0`: `PWRON` kapalı; CP'yi başlatma denenmedi.
+Modem bağlantısı hâlâ etkin değil. Telefon bölümlerine yazılmadı. Sonraki
+isteğe bağlı deneme, güvenli monitör hatalarını çözmeli, bootloader'ın CP
+devir bloğunu denetlemeli ve tam IPC el sıkışmasından önce mailbox durumunu
+zaman sınırıyla gözlemlemeli.
 
 Fabrika sürücüsü açılış, biçimli komutlar ve radyo dosya hizmeti için SIPC5
 kanallarını kullanıyor. Ana bilgisayarda çalışan çerçeve ayrıştırıcısı ve

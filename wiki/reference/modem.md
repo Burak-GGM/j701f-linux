@@ -17,11 +17,14 @@ factory header exactly. The tool does not validate a
 firmware signature or start the modem.
 
 Source for a one-shot read-only mailbox diagnostic was compiled and loaded
-once. It read the CP power register through the secure monitor (`0xb`) and
-found the CP mailbox registers at zero, then unloaded itself. Claude's next
-bounded trial copied BOOT and MAIN into reserved CP RAM and the secure monitor
-accepted them. It did not power or start the CP, so there is still no modem
-link. Nothing has been written to a phone partition.
+once. Its raw secure-monitor result was `0xb`, an error code rather than CP
+power bits; CP mailbox registers were zero. Claude's next bounded trial
+copied BOOT and MAIN into reserved CP RAM and the secure monitor accepted
+them. Its decoded CP_CTRL_NS value was `0x06a0`, with `PWRON` clear; CP start
+was not attempted. There is still no modem link. Nothing has been written to
+a phone partition. The next opt-in trial must decode secure-monitor errors,
+check the bootloader's CP handoff block and observe mailbox status with a
+timeout before attempting the full IPC handshake.
 
 The factory driver uses SIPC5 channels for boot, formatted commands and the
 radio file service. A host-only frame parser and a synthetic NV request model
