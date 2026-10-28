@@ -158,6 +158,9 @@ copy system/session/freezer/freezer.js home/burak-alpine/.local/lib/j701f-freeze
 copy system/session/freezer/j701f-freezer.py home/burak-alpine/.local/lib/j701f-freezer/j701f-freezer.py
 copy system/session/freezer/j701f-freezer.conf home/burak-alpine/.config/j701f-freezer.conf 644
 copy system/session/freezer/j701f-freezer.desktop home/burak-alpine/.config/autostart/j701f-freezer.desktop 644
+# Back touch key held half a second closes the active application (owner's yes, 2026-10-28).
+copy system/session/backkey/j701f-backkey usr/local/bin/j701f-backkey
+copy system/session/backkey/j701f-backkey.desktop home/burak-alpine/.config/autostart/j701f-backkey.desktop 644
 copy system/release/kscreenlockerrc home/burak-alpine/.config/kscreenlockerrc 644
 # The recents touch key sends KEY_PROG1 ("Launch (1)" in Qt); Plasma binds
 # nothing to it by default.
