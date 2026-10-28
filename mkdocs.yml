@@ -88,6 +88,7 @@ plugins:
             Building a release: Dağıtım imajının oluşturulması
             Graphical recovery: Grafik arayüzlü kurtarma
             Camera: Kamera
+            Modem: Modem
             Performance and tuning: Başarım ve ince ayar
             Browser scroll measurements: Tarayıcı kaydırma ölçümleri
             Network toolbox: Ağ araç kutusu
@@ -121,6 +122,7 @@ nav:
       - Building a release: reference/release-build.md
       - Graphical recovery: reference/recovery.md
       - Camera: reference/camera.md
+      - Modem: reference/modem.md
       - Performance and tuning: reference/performance.md
       - Browser scroll measurements: reference/scroll-benchmark.md
       - Network toolbox: reference/security-toolbox.md

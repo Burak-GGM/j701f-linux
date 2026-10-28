@@ -41,6 +41,10 @@ python3 tools/prepare-boot-update.py --handoff-dir build/kernel/handoff-NAME \
 
 ## Build tools
 
+For modem development, `tools/modem-radio-toc.py` reads a local RADIO image's
+512-byte table and checks section bounds. It does not extract firmware or
+interact with the phone ([modem status](modem.md)).
+
 | Tool | Purpose |
 | --- | --- |
 | `build-kernel.py` | Fetch, patch, configure and compile the kernel; pins source, patches and configuration by hash |

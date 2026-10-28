@@ -1,5 +1,9 @@
 # Araçlar ve iş akışı
 
+Modem geliştirmesi için `tools/modem-radio-toc.py`, yerel RADIO imajının
+512 baytlık tablosunu okur ve bölüm sınırlarını denetler. Yazılım çıkarmaz,
+telefonla iletişime geçmez ([modemin durumu](modem.md)).
+
 `tools/` içindeki her şey, aksi belirtilmedikçe geliştirme bilgisayarında çalışır. Araçlar bilerek katıdır: girdileri özetle sabitler, sonuçları denetler ve tahmin yürütmek yerine durur.
 
 ## Gündelik döngü
