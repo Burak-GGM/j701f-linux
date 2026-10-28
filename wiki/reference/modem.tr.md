@@ -17,11 +17,17 @@ Araç imzayı doğrulamaz ve modemi başlatmaz.
 
 Tek seferlik salt okunur mailbox tanılama modülü derlenip bir kez yüklendi.
 Güvenli monitör üzerinden CP güç kaydı `0xb`, CP mailbox kayıtları sıfır
-okundu; modül sonra kendiliğinden çıktı. Modem bağlantısı hâlâ etkin değil.
-Ana bilgisayarda `Module.symvers` bulunmadığından sembol uyarıları vardı;
-Claude gerçek deneme için telefonun çekirdek ağacına karşı yeniden derledi.
-Sonraki aşamalar: modüler CP
-sürücüsü, sınırları denetlenen yazılım yükleyici ve en son hücresel kullanıcı alanı.
-Modem açılışı ayrıca güvenlik isteği ve IPC el sıkışması gerektirir. Cihaza
-özgü NV verisi özel bir kopyada tutulacak; ilk geliştirmede değişiklikler
-yalnızca RAM'de kalacak. [Teknik notlar](https://github.com/Burak-GGM/j701f-linux/blob/main/docs/j701f-modem.md).
+okundu; modül sonra kendiliğinden çıktı. Claude'un sonraki sınırlı denemesinde
+BOOT ve MAIN ayrılmış CP RAM'ine kopyalandı ve güvenli monitör bunları kabul
+etti. CP'ye güç verilip başlatılmadı; modem bağlantısı hâlâ etkin değil.
+Telefon bölümlerine yazılmadı.
+
+Fabrika sürücüsü açılış, biçimli komutlar ve radyo dosya hizmeti için SIPC5
+kanallarını kullanıyor. Ana bilgisayarda çalışan çerçeve ayrıştırıcısı ve
+sentetik NV istek modeli test edildi. Model bütün yazmaları RAM'de tutar ve
+EFS'yi okuyamaz. J701F'nin gerçek yanıt biçimi CP başladıktan sonra
+ölçülecek. `libsamsung-ipc` yararlı Samsung protokol desteği içeriyor, ancak
+J701F arka ucu yok. Plan, bu arka ucu ekleyip sonra `samsungipcd` AT köprüsü
+ve ModemManager'ı denemek. Şu anda çalışan modem hizmeti kurulmuş değil.
+[Teknik notlar](https://github.com/Burak-GGM/j701f-linux/blob/main/docs/j701f-modem.md)
+ve [kullanıcı alanı tasarımı](https://github.com/Burak-GGM/j701f-linux/blob/main/docs/j701f-modem-userspace.md).

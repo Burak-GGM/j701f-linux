@@ -2,7 +2,10 @@
 
 Modem geliştirmesi için `tools/modem-radio-toc.py`, yerel RADIO imajının
 512 baytlık tablosunu okur ve bölüm sınırlarını denetler. Yazılım çıkarmaz,
-telefonla iletişime geçmez ([modemin durumu](modem.md)).
+telefonla iletişime geçmez. `tools/modem/sipc5.py` sınırları denetlenen
+bağlantı çerçevelerini, `tools/modem/rfs.py` ise çağıranın verdiği RAM imajındaki
+NV isteklerini denetler. Hiçbiri cihaz ya da özel dosya açmaz ve çalışan bir
+modem hizmeti değildir ([modemin durumu](modem.md)).
 
 `tools/` içindeki her şey, aksi belirtilmedikçe geliştirme bilgisayarında çalışır. Araçlar bilerek katıdır: girdileri özetle sabitler, sonuçları denetler ve tahmin yürütmek yerine durur.
 

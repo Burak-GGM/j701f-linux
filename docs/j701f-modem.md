@@ -1,8 +1,9 @@
 # J701F modem bring-up (2026-10-28, Codex)
 
-Status: diagnostic preparation only. Calls, SMS and mobile data do not work. A
-read-only one-shot state module was loaded once and exited; no CP firmware was
-sent, no modem service was started, and no partition was changed. The parser
+Status: CP firmware BOOT/MAIN was staged and accepted by the secure monitor in
+Claude's Stage A trial, but CP power/start and the IPC link were not enabled.
+Calls, SMS and mobile data do not work; no partition was changed. Earlier, a
+read-only one-shot state module was loaded once and exited. The parser
 passed against the header
 of the local SM-J701F factory CP package: decompressed image 38,830,512 bytes;
 BOOT at 512 for 5,900 bytes, MAIN at 6,432 for 0x0250677c bytes, NV external,
@@ -91,18 +92,24 @@ device-unique NV material.
    interface: reserved-memory mapping, mailbox IRQ, secure-monitor power,
    bounded BOOT/MAIN transfer, security request, handshake, SIPC5 channels.
    Keep boot support opt-in and modular so failure does not prevent Linux
-   from starting. Do not use `cbd` as an opaque Android binary in production.
+   from starting. **Stage A passed** on 2026-10-28: Claude's opt-in module
+   staged BOOT/MAIN from RADIO and the security SMC returned success. It did
+   not release the CP or establish IPC. Stage B (power/start) remains untested.
+   Do not use `cbd` as an opaque Android binary in production.
 4. Keep any authorized NV data in a private copy with writes in RAM until the
    CP is stable. RFS/telephony userspace and then calls, SMS and data come
-   after a successful link. Cellular transmissions have not been attempted.
+   after a successful link. A host-only SIPC5/RFS prototype and stack decision
+   are in [userspace notes](j701f-modem-userspace.md). Cellular transmissions
+   have not been attempted.
 
 Every phone-side stage must preserve the existing BOOT recovery path. Never
 play audio during modem trials, per the owner's standing order.
 
-## Stage 3A design before CP writes
+## Stage 3A design and result
 
-The target is to test firmware *staging and secure validation* without
-releasing the CP. This is a proposed design, not an executed step. Firmware
+The target was firmware *staging and secure validation* without releasing the
+CP. Claude executed this stage on 2026-10-28; the security request returned
+success and the CP was not released. The original design follows. Firmware
 source is the installed RADIO block device, opened read-only. Recheck the
 partition name and 92,274,688-byte size; compare the 512-byte header with the
 already verified copy; parse it with the same bounds as the host tool. `BOOT`

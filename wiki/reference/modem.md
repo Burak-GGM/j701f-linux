@@ -18,12 +18,17 @@ firmware signature or start the modem.
 
 Source for a one-shot read-only mailbox diagnostic was compiled and loaded
 once. It read the CP power register through the secure monitor (`0xb`) and
-found the CP mailbox registers at zero, then unloaded itself. This is still
-an inactive modem link. The host build had unresolved-symbol warnings because
-the output tree has no `Module.symvers`; Claude rebuilt against the phone's
-kernel tree for the actual trial.
-The next stages are a small modular CP
-driver, a bounded firmware loader and finally cellular userspace. Booting
-the modem also needs a security request and an IPC handshake. Device-specific
-NV data will remain in a private copy, with writes held in RAM during early
-development. See the [technical notes](https://github.com/Burak-GGM/j701f-linux/blob/main/docs/j701f-modem.md).
+found the CP mailbox registers at zero, then unloaded itself. Claude's next
+bounded trial copied BOOT and MAIN into reserved CP RAM and the secure monitor
+accepted them. It did not power or start the CP, so there is still no modem
+link. Nothing has been written to a phone partition.
+
+The factory driver uses SIPC5 channels for boot, formatted commands and the
+radio file service. A host-only frame parser and a synthetic NV request model
+are now tested. The model keeps all writes in RAM and cannot read EFS. The
+actual J701F response format remains to be measured after the CP starts.
+`libsamsung-ipc` has useful Samsung protocol support but no J701F backend;
+the eventual path is a J701F backend, then the `samsungipcd` AT bridge and
+ModemManager. None is installed as a working modem service. See the
+[technical notes](https://github.com/Burak-GGM/j701f-linux/blob/main/docs/j701f-modem.md)
+and [userspace design](https://github.com/Burak-GGM/j701f-linux/blob/main/docs/j701f-modem-userspace.md).

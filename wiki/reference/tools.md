@@ -43,7 +43,10 @@ python3 tools/prepare-boot-update.py --handoff-dir build/kernel/handoff-NAME \
 
 For modem development, `tools/modem-radio-toc.py` reads a local RADIO image's
 512-byte table and checks section bounds. It does not extract firmware or
-interact with the phone ([modem status](modem.md)).
+interact with the phone. `tools/modem/sipc5.py` checks bounded link frames;
+`tools/modem/rfs.py` checks NV requests against a caller-supplied RAM image.
+Neither opens a device or private file, and neither is a running modem service
+([modem status](modem.md)).
 
 | Tool | Purpose |
 | --- | --- |
