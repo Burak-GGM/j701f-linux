@@ -1778,6 +1778,12 @@ The owner, testing on the phone: Home works, the recents and back touch keys do 
 - `system/session/backkey/j701f-backkey`: listens on the touch key device (the user is in `input`, nothing is grabbed); a short press stays the application's Back, **holding it half a second closes the active application** through KWin's `Window Close` shortcut. Tested on the phone with injected presses: Settings stayed open after a 0.1 s press and closed after a 0.8 s press. Running on the phone from `/tmp` for this session only; installing its autostart entry (`j701f-backkey.desktop`) on the phone was refused by the permission check as persistence, and a new session service needs the owner's yes anyway, so it is not in `provision.sh` yet.
 - **Installed (owner: "Evet, kalıcı yap").** `/usr/local/bin/j701f-backkey` and `~/.config/autostart/j701f-backkey.desktop` on the phone, the listener running in the session; in the release through `provision.sh` and `refresh_release_scripts`, checked by `validate_root`. In the key log at 13:52 a physical press held for about a second, while the session-only copy was running.
 
+## Modem, restarted with Codex (2026-10-28)
+
+The owner started the modem work again ("geri tuşu bittikten sonra modeme başla"); Codex leads it (`docs/j701f-modem.md`, `tools/modem-radio-toc.py`), Claude does the phone runs over USB serial (no SSH on the fresh system).
+- **RADIO header, read-only:** `RADIO` is `/dev/mmcblk0p13`, 92,274,688 bytes. Its first 512 bytes (copied to ignored `build/modem/radio-header-phone.bin`; nothing else read, EFS untouched) pass Codex's TOC checker and are byte-identical to the header of the factory CP package: BOOT 0x170c bytes at file 0x200 for 0x40000000, MAIN 0x0250677c at 0x1920 for 0x40010000, NV 1 MiB for 0x44900000 (not in the partition), OFFSET 0x85600 at 0x7aa00.
+- **State snapshot:** Codex's `tools/kmod/modem-state/j701f_modem_state.c`, built against the 7.1.13 tree configured with the phone's own config and loaded once: CP_CTRL (non-secure view, through the secure monitor's read call) `0xb`, mailbox `INTSR0`, CP-to-AP message, status and active registers all `0`. No fault; the module refuses to stay loaded by design. Same picture as on 2026-10-13: power and start bits set by the boot loader, but the modem has never spoken to the host, so it has to be booted from scratch.
+
 <!-- CLAUDE-END 2026-10-09 -->
 
 <!-- CODEX-BEGIN 2026-10-28 -->
