@@ -41,6 +41,7 @@ The sources are in `system/` in the repository.
 | `/etc/localtime`, `/etc/timezone` | `build-release.py --timezone` | Time zone; the release builder uses the build computer's zone unless told otherwise. Without it the phone shows UTC (both the old system and the first release lacked it) |
 | `/usr/local/bin/j701f-flashlight`, app "Flashlight"; `/usr/local/bin/j701f-front-flash` | `flashlight/` | Two buttons for the rear and front flash LEDs (Plasma's flashlight button only drives the rear one); both go off when the app closes. `j701f-front-flash [on\|off\|toggle]` does the front one from a terminal |
 | `~/.config/kglobalshortcutsrc` | `release/kglobalshortcutsrc` | Binds the recents touch key (`KEY_PROG1`, Qt "Launch (1)") to Plasma Mobile's task switcher; Plasma binds nothing to it by default. Takes effect at the next login |
+| (not installed) | `session/backkey/` | `j701f-backkey`: holding the back touch key half a second closes the active application (Plasma's Back only goes back a page inside an application). Tested, but not started automatically yet: a new session autostart waits for the owner's yes. Run by hand: `/path/to/j701f-backkey &` in the session |
 
 ## Graphics
 

@@ -41,6 +41,7 @@ Kaynakları depoda `system/` içindedir.
 | `/etc/localtime`, `/etc/timezone` | `build-release.py --timezone` | Saat dilimi; sürüm oluşturucu, başka bir şey söylenmedikçe derlemeyi yapan bilgisayarın dilimini kullanır. Bu dosya olmadan telefon UTC gösterir (hem eski sistemde hem ilk sürümde eksikti) |
 | `/usr/local/bin/j701f-flashlight`, "Fener" uygulaması; `/usr/local/bin/j701f-front-flash` | `flashlight/` | Arka ve ön flaş LED'i için iki düğme (Plasma'nın fener düğmesi yalnızca arkadakini yakar); uygulama kapanınca ikisi de söner. `j701f-front-flash [on\|off\|toggle]` öndekini terminalden yakar |
 | `~/.config/kglobalshortcutsrc` | `release/kglobalshortcutsrc` | Son uygulamalar dokunmatik tuşunu (`KEY_PROG1`, Qt'de "Launch (1)") Plasma Mobile'ın görev değiştiricisine bağlar; Plasma bu tuşa varsayılan olarak hiçbir şey bağlamaz. Bir sonraki oturum açılışında etkinleşir |
+| (kurulmuyor) | `session/backkey/` | `j701f-backkey`: geri dokunmatik tuşu yarım saniye basılı tutulunca açık uygulamayı kapatır (Plasma'nın geri tuşu yalnızca uygulama içinde bir sayfa geri gider). Denendi, ama henüz kendiliğinden başlamıyor: yeni bir oturum otomatik başlatması sahibin onayını bekliyor. Elle: oturumda `/yol/j701f-backkey &` |
 
 ## Grafik
 
