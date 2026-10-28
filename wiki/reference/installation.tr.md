@@ -18,6 +18,20 @@ python3 tools/build-release.py --development \
 
 Sıkıştırılmış dosya FAT32'nin tek dosya için 4 GiB sınırının altında kalmalıdır. Tam ext4 imajı tam olarak 23.314.432 sektördür ve mevcut BOOT aktarımının beklediği UUID'yi taşır. Derleme kayıtlı Wi-Fi ağlarını, SSH anahtarlarını veya parolaları kopyalamaz. Yeni kurulum ilk başta çevrimdışı açılır; ağı telefonda sonradan yapılandırın.
 
+## Bilgisayardaki grafik kurucu
+
+Python Tk desteği bulunan Linux bilgisayarda depo kökünden `python3 tools/installer-gui.py` çalıştırın. Bağlı telefonu projenin `j701f-diagnostic` USB seri kimliğiyle bulur; başka bir Samsung veya ilgisiz seri aygıtı kabul etmez. İlk düğme **Dry run / inspect** (yazmadan denetle) düğmesidir; pencere açılırken yazma kapalıdır.
+
+Üç sayfa kurulumun farklı kısımlarını kapsar:
+
+| Sayfa | Yazmadan denetim | Yazma adımı |
+| --- | --- | --- |
+| Reinstall release | `scripts/install-release.py` ile sürümü doğrular ve planı gösterir. | Varsayılan olarak seçiliyse USERDATA'yı harici SD'ye yedekler, ardından projenin açık tutulan RAM kurtarmasıyla kurar. `--from-recovery`, önceden SD'ye konmuş sürümden devam eder; aksi hâlde çalışan telefonun IPv4 adresi ve sabitlenmiş SSH anahtarı gerekir. |
+| First-install SD staging | `scripts/first-install.py` ile BOOT/RECOVERY paketini, sürümü ve isteğe bağlı FAT32 microSD kartını doğrular. | Sürümü, betikleri ve BOOT imajını microSD'ye kopyalayıp geri okur. Gösterilen Odin ve kurtarma adımları elle yapılır. |
+| TWRP / OrangeFox ZIP | ZIP oluşturucunun girdilerini kontrol eder ve komutu gösterir. | `tools/build-recovery-zip.py` ile bilgisayarda ZIP oluşturur; isteğe bağlı olarak sürümü içine koyar. ZIP'in uyumlu kurtarmada kurulması elle yapılır ve gerçek cihazda henüz sınanmamıştır. |
+
+Her yazma adımı için **Enable writing for one step** seçeneğini açın, **Run write step** düğmesine basın, o adımın penceresini ve tam onay sözcüklerini doğrulayın. Seçenek her çalıştırmadan sonra yeniden kapanır. Yeniden kurulum için tanılama seri aygıtının bağlı olması ve `ERASE USERDATA` yazılması gerekir; yedeksiz çalışma ve isteğe bağlı yeniden başlatma ayrıca onaylanır. SD'ye kopyalamak için `STAGE SD`, mevcut ZIP'i değiştirmek için `REPLACE ZIP` gerekir. Sürüm kurulurken pencereyi açık tutun: USB kopsa bile kurtarmadaki iş devam edebilir ve bilgisayar ilerlemeyi gösteremeyebilir. Grafik kurucu Odin çalıştırmaz; BOOT, RECOVERY veya korumalı bölümleri flashlamaz.
+
 ## Çalışan J701F Linux üzerinden otomatik yeniden kurulum
 
 Bu yol, telefonda projenin Linux sisteminin çalışmasını, sabitlenmiş SSH anahtarıyla erişimi, takılı harici SD kartı ve USB bağlantısını gerektirir. Hazırlanmış bir cihazı yeniden kurmak içindir. Adresi `--phone-ip` (veya `J701F_PHONE_IP`) ile belirtin; doğrulanmış SSH anahtarını `build/phone-ssh-known-hosts` içinde tutun (veya `--known-hosts` verin). Önce planı inceleyin:

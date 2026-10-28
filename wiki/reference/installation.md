@@ -18,6 +18,20 @@ python3 tools/build-release.py --development \
 
 The compressed payload must remain below FAT32's 4 GiB single-file limit. The full ext4 image has exactly 23,314,432 sectors and the UUID expected by the existing BOOT handoff. The build does not copy saved Wi-Fi networks, SSH keys or passwords. A fresh installation initially boots offline; set up networking on the phone afterward.
 
+## Graphical host installer
+
+On a Linux computer with Python's Tk support, start `python3 tools/installer-gui.py` from the repository. It detects a connected phone by the project's USB serial ID `j701f-diagnostic`; a generic Samsung or unrelated serial device is not accepted. The first button is **Dry run / inspect**, and writing is disabled on opening the window.
+
+The three pages cover different parts of installation:
+
+| Page | Dry run | Write step |
+| --- | --- | --- |
+| Reinstall release | Verify the release and print the plan with `scripts/install-release.py`. | Back up USERDATA on the external SD when selected (the default), then install through the project's held RAM recovery. `--from-recovery` resumes an already staged release; otherwise supply the running phone's IPv4 address and pinned SSH key. |
+| First-install SD staging | Verify the BOOT/RECOVERY bundle, release and optional FAT32 microSD using `scripts/first-install.py`. | Copy the release, scripts and BOOT image to the microSD and read them back. The printed Odin and recovery steps remain manual. |
+| TWRP / OrangeFox ZIP | Check ZIP builder inputs and show the planned command. | Build a ZIP on the computer with `tools/build-recovery-zip.py`; optionally embed the release. Installation of the ZIP in a compatible recovery remains manual and has not been hardware tested. |
+
+For any write step, enable **Enable writing for one step**, choose **Run write step**, and approve that step's dialog and exact confirmation phrase. The switch resets after each run. Reinstallation requires a connected diagnostic serial device and the phrase `ERASE USERDATA`; the optional reboot and running without a backup each require their own approval. SD staging requires `STAGE SD`. Replacing an existing ZIP requires `REPLACE ZIP`. Keep the window open during a release install: its recovery job can continue after a USB disconnect even if the host can no longer display progress. The GUI does not run Odin or flash BOOT, RECOVERY, or protected partitions.
+
 ## Automatic reinstall from a working J701F Linux system
 
 This route requires the phone to be running this project's Linux, reachable through its pinned SSH host key, with an external SD card inserted and USB connected. It is meant for reinstalling an already prepared handset. Supply its address with `--phone-ip` (or `J701F_PHONE_IP`) and keep its verified SSH key in `build/phone-ssh-known-hosts` (or pass `--known-hosts`). First inspect the plan:

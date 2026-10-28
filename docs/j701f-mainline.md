@@ -1776,3 +1776,11 @@ With `LIBCAMERA_SOFTISP_MODE=cpu` active, the Plasma Camera 2.1.1 process was te
 
 This confirms that lower encoder resolution avoids the observed rear-camera failure, although the 540p preset distorts the 4:3 preview to 16:9. It is not made the default. A proper recorder fix needs aspect-preserving downscaling and YUV 4:2:0 input; both are future work. The temporary `plasmacamerarc` edit was restored, the trial files removed, and the phone lock released. The CPU ISP release fix, autofocus-bus finding, and separate flashlight app are in Claude's entries above.
 <!-- CODEX-END 2026-10-28 -->
+
+<!-- CODEX-BEGIN 2026-10-28 INSTALLER -->
+## Host graphical installer (2026-10-28)
+
+Added `tools/installer-gui.py` as a Tk front end to the existing guarded scripts. Its three pages wrap `scripts/install-release.py` (including `--backup-userdata` and `--from-recovery`), `scripts/first-install.py`, and `tools/build-recovery-zip.py`. The default button executes only the first two scripts' dry-run mode; the ZIP builder lacks a dry-run switch, so the GUI checks its local BusyBox/scripts and optional embedded release instead of creating a file. A one-step write switch resets after each operation. USERDATA erase, optional reboot, backup omission, SD staging, and replacement of an existing ZIP each have operation-specific confirmation; phone erase and SD/ZIP replacement require exact typed phrases. Release execution requires exactly one `/dev/ttyACM*` whose USB parent serial is `j701f-diagnostic` (found via sysfs). All subprocesses use argv arrays, no shell, and stream output in a worker thread so the window stays responsive. The window refuses to close while a release job is in progress because a detached recovery write may continue after host disconnect.
+
+The GUI itself has made no phone or SD writes. Eight host unit tests cover command boundaries, serial filtering, dry-run flags and confirmation behavior; a Tk window initialization smoke test passed on the host. It deliberately does not automate Odin, BOOT/RECOVERY flashing, or running the TWRP ZIP. Public usage and caveats are in `wiki/reference/installation.md` and `.tr.md`.
+<!-- CODEX-END 2026-10-28 INSTALLER -->
