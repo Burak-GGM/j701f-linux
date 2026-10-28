@@ -41,7 +41,7 @@ Samsung'un kamera yazılımından hiçbir şey kullanılmıyor - ne sürücüsü
 ## Eksikler
 
 - Tam çözünürlük (şimdilik sensör başına tek kip), otomatik odak (arka mercek odaklanmıyor, sabit bir konumda tutuluyor: DW9807 motoru `hsi2c@138b0000` üzerinde 0x0c adresinde, `j701f_camaf.ko` bu hattı çalışma anında açıyor; `j701f_camera` konumu modülün 0x58'deki EEPROM ayar verilerinden ya da `focus` parametresinden alıyor), çekim sırasında flaş.
-- Arka mercek konumu elle: `echo 600 | sudo tee /sys/module/j701f_camera/parameters/focus` (`-2` = ayar verisinden hesaplanan varsayılan, sahibin telefonunda 528: sonsuz kodu 506'ya makro kodu 727'ye doğru onda bir eklenir; `-1` = sürülmez). Henüz gerçek bir sahnede denenmedi.
+- Arka mercek konumu elle: `echo 600 | sudo tee /sys/module/j701f_camera/parameters/focus` (`-2` = ayar verisinden hesaplanan varsayılan, sahibin telefonunda 528: sonsuz kodu 506'ya makro kodu 727'ye doğru onda bir eklenir; `-1` = sürülmez). Sahip kamerayı varsayılan konumla kullandı ve iyi buldu; keskinlik taraması yapılmadı.
 - Sensör ayarı: renk matrisi ve mercek gölgeleme düzeltmesi yok; libcamera iki sensörü de tanımıyor ve bunu söylüyor.
 - Otomatik pozlama yavaş tırmanıyor: loş bir odada resmin aydınlanması birkaç saniye sürüyor.
 - Görüntü döndürmesi: arka kamera için ilk tahmin fotoğrafları tepetaklak verdi (telefon sahibinin bildirimi); şimdi 270°. Ön kameranın 90° değeri ayna varsayımıdır, denetlenmedi.
