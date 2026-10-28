@@ -18,7 +18,7 @@ Telefon bir **Samsung SM-J701F** (kod adı `j7velte`): sekiz Cortex-A53 çekirde
 | Döndürme, fener, donanımsal video çözme | Çalışıyor |
 | Kurtarma | Projenin kendi grafik kurtarma ortamı: çekirdek güncelleme ve geri alma, yedek, USB üzerinden dosyalar |
 | Uyku | Boşta uyku elle başlatıldığında çalışıyor; henüz otomatik değil |
-| Kamera | İki kameradan önizleme ve fotoğraf; video kaydı ve otomatik odak yok |
+| Kamera | İki kameradan önizleme ve fotoğraf; sınırlı ayarlarda kısa video çalışıyor, otomatik odak yok |
 | Modem | Çalışmıyor, şimdilik planda yok |
 
 Tablonun tamamı [donanım ve durum](reference/hardware.md) sayfasında.

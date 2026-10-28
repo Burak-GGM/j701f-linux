@@ -18,7 +18,7 @@ The phone is a **Samsung SM-J701F** (code name `j7velte`): an Exynos 7870 system
 | Rotation, flashlight, hardware video decoding | Working |
 | Recovery | The project's own graphical recovery: kernel update and rollback, backup, files over USB |
 | Suspend | Suspend-to-idle works when started by hand; not automatic yet |
-| Camera | Preview and photographs from both cameras; no video recording, no autofocus |
+| Camera | Preview and photographs from both cameras; short video works at limited settings, no autofocus |
 | Modem | Not working, not planned for now |
 
 The full table is on the [hardware and status](reference/hardware.md) page.
