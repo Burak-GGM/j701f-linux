@@ -1762,3 +1762,17 @@ The owner, testing on the phone: Home works, the recents and back touch keys do 
 - **Why the rear picture is soft: the focus motor is on a bus we never enabled.** The camera device tree says "DW9807 actuator at 0x18, not used yet" and assumed the sensor's bus. Checked on the phone while the rear camera streamed (`cam -c 1`, `afvdd` gpd1-1 high): nothing answers on `hsi2c@138a0000` but the sensor (`i2cdetect -r 7`: only 0x2d). The factory device tree (`build/kernel/j701f-live.dtb`) has the actuator on a different controller, **`hsi2c@138B0000`, 7-bit address 0x0c** (`samsung,exynos5-fimc-is-actuator-dw9807`; the node name's "@18" is the 8-bit form), together with the **rear EEPROM at 0x58** (`samsung,rear-eeprom-i2c`, which holds the module's calibration, autofocus range included). That controller is not enabled in the project's device tree, so the lens stays wherever its spring holds it. Next step: enable `hsi2c@138b0000` with its pins, let `j701f_camera` (which already switches `afvdd`) write a fixed lens position through a second I2C client after power-up (a value found by a sweep; DW9807: register 0x02 = 0 to wake, 0x03/0x04 = 10-bit position), and later read the EEPROM for the calibrated range; this needs a new BOOT image. Plasma Camera's flash button does nothing because libcamera's simple pipeline drives no flash; not attempted.
 
 <!-- CLAUDE-END 2026-10-09 -->
+
+<!-- CODEX-BEGIN 2026-10-28 -->
+## Camera video recording checked on the phone (2026-10-28)
+
+With `LIBCAMERA_SOFTISP_MODE=cpu` active, the Plasma Camera 2.1.1 process was tested over USB serial. The output sink was verified muted before every test. No audio was played. Three short captures were made through injected touchscreen taps; `ffprobe` read the files without decoding or playback:
+
+| Camera / setting | Result | Memory observation |
+| --- | --- | --- |
+| Front, Auto | Valid 9.33 s MP4, 1276 × 960 H.264 + MP3, 3.6 MB | During recording camera RSS reached about 710 MB; it survived and finalized the file. |
+| Rear, Auto | Invalid 48-byte MP4 (`moov atom not found`); camera process later disappeared | In six seconds `MemAvailable` fell from 643 to 95 MB and `SwapFree` from 889 to 647 MB. RSS reached at least 788 MB before the process exited. No earlyoom or kernel OOM line was found, so the precise terminating signal is unproven. |
+| Rear, 540p | Valid 6.92 s MP4, 960 × 540 H.264 + MP3, 1.47 MB | Camera remained alive; peak RSS (`VmHWM`) 491 MB. |
+
+This confirms that lower encoder resolution avoids the observed rear-camera failure, although the 540p preset distorts the 4:3 preview to 16:9. It is not made the default. A proper recorder fix needs aspect-preserving downscaling and YUV 4:2:0 input; both are future work. The temporary `plasmacamerarc` edit was restored, the trial files removed, and the phone lock released. The CPU ISP release fix, autofocus-bus finding, and separate flashlight app are in Claude's entries above.
+<!-- CODEX-END 2026-10-28 -->
