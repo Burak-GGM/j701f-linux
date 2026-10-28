@@ -6,6 +6,9 @@
 # j701f_camera.ko, and udmabuf.ko (libcamera's software image processing needs
 # a dma-buf provider; the kernel in BOOT has none built in).
 cd "$(dirname "$0")" || exit 1
+# Claude 2026-10-28: enables the rear focus motor's I2C bus (optional; without
+# it the lens is simply not moved).
+[ -f j701f_camaf.ko ] && insmod j701f_camaf.ko 2>/dev/null
 for m in videobuf2-vmalloc v4l2-async v4l2-fwnode udmabuf j701f_camera; do
     insmod "$m.ko" 2>/dev/null || grep -q "^$(echo "$m" | tr - _) " /proc/modules || { echo "insmod $m failed"; exit 1; }
 done

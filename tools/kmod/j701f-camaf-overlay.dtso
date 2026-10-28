@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Written by Claude 2026-10-28. Enables the I2C controller that carries the
+ * rear camera's focus motor (DW9807, 0x0c) and calibration EEPROM (0x58), as
+ * in the factory device tree (hsi2c@138B0000). Mainline's exynos7870.dtsi
+ * describes the controller and its pins (gpf1-0/1) but leaves it disabled.
+ * Applied at run time by j701f_camaf.ko, so BOOT is not touched.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+	fragment@0 {
+		target-path = "/soc@0/i2c@138b0000";
+		__overlay__ {
+			clock-frequency = <400000>;
+			status = "okay";
+		};
+	};
+};

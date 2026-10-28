@@ -40,7 +40,7 @@ Nothing of Samsung's camera software is used - not its driver, not its closed im
 
 ## What is missing
 
-- Full resolution (one mode per sensor so far), autofocus (the rear lens motor is not driven: it sits on `hsi2c@138b0000` at 0x0c, a bus controller the project's device tree does not enable yet; the rear EEPROM with the calibration is on the same bus at 0x58), flash while taking a picture.
+- Full resolution (one mode per sensor so far), autofocus (the rear lens is held at one fixed position, not focused: its DW9807 motor is on `hsi2c@138b0000` at 0x0c, which `j701f_camaf.ko` enables at run time; `j701f_camera` sets the position from the module's EEPROM calibration at 0x58, or from the parameter `focus`), flash while taking a picture.
 - Sensor tuning: no colour matrix, no lens-shading correction; libcamera knows neither sensor and says so.
 - Automatic exposure climbs slowly: in a dim room the picture needs a few seconds to brighten.
 - Image rotation: the first guess for the rear camera gave upside-down photographs (the owner's report); it is 270° now. The front camera's 90° is the mirrored assumption and unchecked.

@@ -28,6 +28,13 @@
  *    software image processing switched on. Nothing else here is Qualcomm's.
  *  - The camera block's clocks, power domain and IOMMU are handled by direct
  *    register writes while streaming, not by proper drivers.
+ *  - Claude 2026-10-28: the rear lens is held at one position, not focused.
+ *    Its DW9807 motor is on hsi2c@138b0000 at 0x0c (enabled at run time by
+ *    j701f_camaf.ko). On each rear stream start the lens is moved, in small
+ *    steps so that it does not click, to the module parameter "focus":
+ *    by default a position a little in front of infinity worked out from the
+ *    module's EEPROM; 0..1023 sets it by hand (also while streaming), -1
+ *    leaves the lens alone. It is lowered again before the power goes.
  */
 #include <linux/bitfield.h>
 #include <linux/clk.h>
@@ -42,6 +49,7 @@
 #include <linux/of.h>
 #include <linux/phy/phy.h>
 #include <linux/regulator/consumer.h>
+#include <linux/unaligned.h>
 #include <media/media-device.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -77,6 +85,7 @@ struct cam_cfg {
 	 * code); the mainline PHY driver knows the reset bits there but not this one. */
 	u32 sysreg_option;
 	bool s5k3l2_init;		/* reset, patch and analogue tables before the mode */
+	bool focus_motor;		/* DW9807 on hsi2c@138b0000, powered by afvdd */
 	const struct cam_reg *mode;
 	unsigned int mode_len;
 };
@@ -132,7 +141,7 @@ struct cam_cfg {
 static const struct cam_cfg rear_cfg = {
 	.name = "rear", .csis_base = 0x14420000, .rx_mux = CMU_ISP_MUX_RXBYTECLKHS0_S0,
 	.lanes = 4, .settle = 30, .width = 2072, .height = 1552, .fll = 3174, .llp = 4512, .buf_bytes = 6 << 20,
-	.s5k3l2_init = true,
+	.s5k3l2_init = true, .focus_motor = true,
 	.mode = s5k3l2_mode_2072x1552_30fps, .mode_len = ARRAY_SIZE(s5k3l2_mode_2072x1552_30fps),
 };
 
@@ -379,6 +388,114 @@ static int cam_poll_thread(void *data)
 	return 0;
 }
 
+#define DW9807_ADDR	0x0c
+#define DW9807_CTL	0x02	/* 0 = active, 1 = power down */
+#define DW9807_MSB	0x03	/* position bits 9:8, then bits 7:0 at 0x04 */
+#define DW9807_STEP	16	/* moves in small steps: a jump clicks audibly */
+#define EEPROM_ADDR	0x58	/* rear module EEPROM, same bus, 16-bit offsets */
+#define EEPROM_AF_INF	0x0100	/* le32 lens codes; on this phone 506 and 727 */
+#define EEPROM_AF_MACRO	0x0108
+
+static DEFINE_MUTEX(focus_lock);
+static struct cam_state *focus_cam;	/* the rear camera, for the parameter */
+static int focus = -2;
+static int lens_now;			/* last position written; 0 after power-up */
+static int lens_cal = -1;		/* from the EEPROM, read once */
+
+static struct i2c_adapter *focus_bus(void)
+{
+	struct device_node *np = of_find_node_by_path("/soc@0/i2c@138b0000");
+	struct i2c_adapter *bus = np ? of_find_i2c_adapter_by_node(np) : NULL;
+
+	of_node_put(np);
+	return bus;	/* NULL without j701f_camaf.ko */
+}
+
+static int dw9807_write(struct i2c_adapter *bus, u8 *buf, u16 len)
+{
+	struct i2c_msg msg = { .addr = DW9807_ADDR, .len = len, .buf = buf };
+
+	return i2c_transfer(bus, &msg, 1) == 1 ? 0 : -EIO;
+}
+
+/* A fixed position a little in front of infinity, from the module's calibration. */
+static int focus_calibrated(struct i2c_adapter *bus)
+{
+	u8 off[2], val[4];
+	struct i2c_msg msg[] = {
+		{ .addr = EEPROM_ADDR, .len = 2, .buf = off },
+		{ .addr = EEPROM_ADDR, .flags = I2C_M_RD, .len = 4, .buf = val },
+	};
+	int inf, macro;
+
+	if (lens_cal >= 0)
+		return lens_cal;
+	put_unaligned_be16(EEPROM_AF_INF, off);
+	if (i2c_transfer(bus, msg, 2) != 2)
+		return -EIO;
+	inf = get_unaligned_le32(val);
+	put_unaligned_be16(EEPROM_AF_MACRO, off);
+	if (i2c_transfer(bus, msg, 2) != 2)
+		return -EIO;
+	macro = get_unaligned_le32(val);
+	if (inf <= 0 || macro <= inf || macro > 1023)
+		return -EINVAL;
+	lens_cal = inf + (macro - inf) / 10;	/* roughly 1-2 m */
+	pr_info("j701f-camera: lens calibration %d..%d, fixed position %d\n",
+		inf, macro, lens_cal);
+	return lens_cal;
+}
+
+/* Called with focus_lock held and the motor powered (rear camera streaming). */
+static int focus_move(struct cam_state *st, int target)
+{
+	struct i2c_adapter *bus = focus_bus();
+	u8 wake[] = { DW9807_CTL, 0 };
+	int ret;
+
+	if (!bus)
+		return -ENODEV;
+	if (target == -2)
+		target = focus_calibrated(bus);
+	ret = target < 0 ? target : dw9807_write(bus, wake, sizeof(wake));
+	while (!ret && lens_now != target) {
+		u8 move[3] = { DW9807_MSB };
+
+		lens_now += clamp(target - lens_now, -DW9807_STEP, DW9807_STEP);
+		move[1] = (lens_now >> 8) & 3;
+		move[2] = lens_now & 0xff;
+		ret = dw9807_write(bus, move, sizeof(move));
+		usleep_range(1000, 1200);
+	}
+	put_device(&bus->dev);
+	if (ret && target != -1)
+		dev_warn(st->dev, "lens position %d not set: %d\n", target, ret);
+	return ret;
+}
+
+static int focus_set(const char *val, const struct kernel_param *kp)
+{
+	int pos, ret = kstrtoint(val, 0, &pos);
+
+	if (ret)
+		return ret;
+	if (pos < -2 || pos > 1023)
+		return -ERANGE;
+	mutex_lock(&focus_lock);
+	WRITE_ONCE(focus, pos);
+	if (focus_cam && focus_cam->streaming)
+		focus_move(focus_cam, pos == -1 ? 0 : pos);
+	mutex_unlock(&focus_lock);
+	return 0;
+}
+
+static const struct kernel_param_ops focus_ops = {
+	.set = focus_set,
+	.get = param_get_int,
+};
+module_param_cb(focus, &focus_ops, &focus, 0644);
+MODULE_PARM_DESC(focus, "rear lens position 0..1023 (DW9807); -2 = from the module's calibration (default), -1 = not driven");
+
 static int cam_hw_start(struct cam_state *st)
 {
 	const struct cam_cfg *cfg = st->cfg;
@@ -444,6 +561,13 @@ static int cam_hw_start(struct cam_state *st)
 		return ret;
 	}
 	st->streaming = true;
+	if (cfg->focus_motor) {
+		mutex_lock(&focus_lock);
+		lens_now = 0;	/* the motor was just powered */
+		if (READ_ONCE(focus) != -1)
+			focus_move(st, READ_ONCE(focus));
+		mutex_unlock(&focus_lock);
+	}
 	return 0;
 clk_off:
 	gpiod_set_value_cansleep(st->reset, 1);
@@ -468,6 +592,13 @@ static void cam_hw_stop(struct cam_state *st)
 		kthread_stop(st->poller);
 	st->poller = NULL;
 	cam_write(st->i2c, 0x0100, 0x00, 1);
+	if (st->cfg->focus_motor) {
+		/* Lower the lens before its power goes, or it drops with a click. */
+		mutex_lock(&focus_lock);
+		if (lens_now)
+			focus_move(st, 0);
+		mutex_unlock(&focus_lock);
+	}
 	msleep(40);
 	csis_stop(st->csis);
 	for (i = 0; i < ARRAY_SIZE(st->user_mux); i++)
@@ -881,6 +1012,8 @@ static int cam_probe(struct i2c_client *i2c)
 		goto unregister_video;
 	dev_info(dev, "%s camera: %s, %ux%u, /dev/%s\n", cfg->name, st->sd.name, cfg->width,
 		 cfg->height, video_device_node_name(&st->vdev));
+	if (cfg->focus_motor)
+		focus_cam = st;
 	return 0;
 
 unregister_video:
@@ -909,6 +1042,8 @@ static void cam_remove(struct i2c_client *i2c)
 	struct cam_state *st = i2c_get_clientdata(i2c);
 	int i;
 
+	if (focus_cam == st)
+		focus_cam = NULL;
 	media_device_unregister(&st->mdev);
 	video_unregister_device(&st->vdev);
 	v4l2_device_unregister_subdev(&st->sd);

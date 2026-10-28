@@ -9,7 +9,7 @@
  *   AVDD     2.8 V, PMIC LDO35 ("VDD_CAM_SENSOR_A2P8")
  *   DVDD     1.2 V, switched by gpd4-4
  *   IO       1.8 V, switched by gpf3-2
- *   AF motor 2.8 V, switched by gpd1-1 (DW9807 actuator, not used yet: it is on
+ *   AF motor 2.8 V, switched by gpd1-1 (DW9807 actuator, driven by j701f_camera: it is on
  *   hsi2c@138b0000 at 0x0c, not on this sensor's bus; the factory node name "@18" is
  *   the 8-bit address)
  *   reset    gpf3-3, low = in reset
