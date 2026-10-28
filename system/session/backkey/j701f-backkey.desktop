@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=J701F back key
+Comment=Hold the back touch key to close the active application
+Exec=/usr/local/bin/j701f-backkey
+NoDisplay=true
+X-KDE-autostart-phase=2

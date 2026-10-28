@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+# Written by Claude 2026-10-28. The back touch key, Android style: a short press
+# stays an ordinary Back key for the application (it goes back a page where it
+# has one), holding it for half a second closes the active application through
+# KWin's "Window Close" shortcut. Plasma Mobile has no back button of its own;
+# on an application's first page and on the home screen Back does nothing, which
+# the owner took for a broken key. Runs in the session (autostart); the user is
+# in the "input" group, so it only listens and grabs nothing.
+import os
+import select
+import struct
+import subprocess
+import time
+
+EV_KEY, KEY_BACK, HOLD = 1, 158, 0.5
+EVENT = struct.Struct('llHHi')
+
+
+def touchkey():
+    for name in sorted(os.listdir('/sys/class/input')):
+        try:
+            with open(f'/sys/class/input/{name}/device/name') as f:
+                if f.read().strip() == 'tm2-touchkey' and name.startswith('event'):
+                    return f'/dev/input/{name}'
+        except OSError:
+            pass
+    return None
+
+
+def close_window():
+    subprocess.run(['qdbus6', 'org.kde.kglobalaccel', '/component/kwin',
+                    'org.kde.kglobalaccel.Component.invokeShortcut', 'Window Close'],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
+
+def main():
+    path = touchkey()
+    if not path:
+        return
+    fd = os.open(path, os.O_RDONLY)
+    pressed = None
+    while True:
+        timeout = None if pressed is None else max(0.0, pressed + HOLD - time.monotonic())
+        if not select.select([fd], [], [], timeout)[0]:
+            close_window()		# held long enough
+            pressed = None
+            continue
+        data = os.read(fd, EVENT.size * 64)
+        for i in range(0, len(data) - EVENT.size + 1, EVENT.size):
+            _, _, kind, code, value = EVENT.unpack_from(data, i)
+            if kind == EV_KEY and code == KEY_BACK:
+                pressed = time.monotonic() if value == 1 else None
+
+
+if __name__ == '__main__':
+    main()
